@@ -489,7 +489,8 @@ def _top_level_param_json_encode(params):
 
     for param, value in params.items():
         if (
-            isinstance(value, (collections.Mapping, collections.Sequence, bool))
+            isinstance(value, (collections.Mapping, collections.Sequence,
+                               collections.Set, bool))
             and not isinstance(value, six.string_types)
         ):
             params[param] = json.dumps(
