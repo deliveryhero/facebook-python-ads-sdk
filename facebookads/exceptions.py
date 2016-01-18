@@ -128,6 +128,28 @@ class FacebookRequestError(FacebookError):
         return self._api_blame_field_specs
 
 
+class FacebookCallFailedError(FacebookError):
+    """
+    Encapsulates errors raised during HTTP call - adds request context.
+    """
+    def __init__(self, request_context, error):
+        self._request_context = request_context
+        self._error = error
+
+        # We do not want to print the file bytes
+        request = self._request_context
+        if 'files' in self._request_context:
+            request = self._request_context.copy()
+            del request['files']
+
+        super(FacebookCallFailedError, self).__init__(
+            "  %s: %s\n" % (type(self._error), str(self._error)) +
+            "  Method:  %s\n" % request.get('method') +
+            "  Path:    %s\n" % request.get('path', '/') +
+            "  Params:  %s\n" % request.get('params')
+        )
+
+
 class FacebookBadObjectError(FacebookError):
     """Raised when a guarantee about the object validity fails."""
     pass

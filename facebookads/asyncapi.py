@@ -3,23 +3,17 @@ import re
 import six
 import time
 import random
+import logging
 import concurrent.futures
 import threading
 
-from requests.packages.urllib3.util.retry import Retry
-
-from facebookads.utils import version
-from facebookads.api import FacebookBadObjectError, FacebookSession, \
-    FacebookAdsApiBatch, FacebookResponse, FacebookAdsApi, \
-    _top_level_param_json_encode
+from facebookads.exceptions import FacebookCallFailedError, FacebookBadObjectError
+from facebookads.api import FacebookSession, FacebookResponse, \
+    FacebookAdsApi, _top_level_param_json_encode
 
 __author__ = 'pasha-r'
 
-
-max_retries = 5
-max_retries_unknown = 3
-max_retries_four_hundred = 2
-pause_min = 0.5
+logger = logging.getLogger("facebookclient")
 
 
 class FbFutureHolder(object):
@@ -63,7 +57,7 @@ class FbFutureHolder(object):
         """
         if 'limit' not in self.params or not self.params['limit']:
             self.params['limit'] = self.limit
-        req_params = json_encode_complex_params(self.params)
+        req_params = _top_level_param_json_encode(self.params)
         self.future = facebook_client.thread_pool.submit(
             facebook_client.no_throw_wrapper, self.endpoint, method=self.method,
             params=req_params, load_all=False, prev_response=self.response, holder=self)
@@ -148,7 +142,7 @@ class FbFutureHolder(object):
     def resubmit(self, facebook_cient):
         req_params = self.params
         if not self.response:
-            req_params = json_encode_complex_params(self.params)
+            req_params = _top_level_param_json_encode(self.params)
         self.future = facebook_cient.thread_pool.submit(
             facebook_cient.no_throw_wrapper, self.endpoint, method=self.method,
             params=req_params, load_all=False, prev_response=self.response, holder=self)
@@ -280,262 +274,71 @@ class FbPagedStatsFutureHolder(FbFutureHolder):
             self.change_the_limit(self.limit, 2)
 
 
-class FbApiAsync(object):
-    def __init__(self, api, threadpool_size=10):
-        """
-        :type api: facebookads.api.FacebookAdsApi
-        """
-        self.thread_lock = threading.Lock()
-        self.thread_pool = concurrent.futures.ThreadPoolExecutor(threadpool_size)
-        self._api = api
-        self.futures = []
-
-    def get_request_future_holder(self, endpoint=None, params=None, limit=None,
-                                  method='GET', prev_response=None, extras=None,
-                                  holder_type=FbFutureHolder):
-        """
-        :param endpoint:
-        :param params:
-        :param limit:
-        :param method:
-        :param prev_response: AdsAPIResponse
-        :type holder_type: type
-        :rtype: FbFutureHolder
-        """
-        params = params or {}
-        if 'limit' not in params or not params['limit']:
-            params['limit'] = limit or self.limit
-        req_params = json_encode_complex_params(params)
-        holder = holder_type(None, endpoint=endpoint, method=method, params=req_params,
-                             limit=limit, prev_response=prev_response, extras=extras)
-        holder.submit(self)
-        return holder
-
-    def no_throw_wrapper(self, endpoint=None, method='GET', params=None, files=None,
-                         load_all=False, prev_response=None, with_timeout=0,
-                         holder=None):
-        """
-        Non-throwing version of _request.
-
-        :param endpoint:
-        :param method:
-        :param params:
-        :param files:
-        :param load_all:
-        :rtype: AdsAPIResponse
-        """
-        try:
-            if with_timeout:
-                time.sleep(with_timeout)
-            if holder:
-                holder.last_yield = time.time()
-            return self._request(endpoint, method, params, files, load_all,
-                                 prev_response=prev_response)
-        except Exception as exc:
-            return exc
-
-    def get_async_results(self):
-        """
-        :type futures: list[FbFutureHolder]
-        :rtype: list[FbFutureHolder]
-        """
-        time.sleep(0.01)
-        cnt = 0
-        while True:
-            cnt += 1
-            try:
-                self.thread_lock.acquire()
-                future_holder = self.futures.pop(0)
-            except IndexError:
-                break
-            finally:
-                self.thread_lock.release()
-
-            future_holder.extract_results(self)
-
-            if future_holder.ready:
-                # loaded all the data
-                yield future_holder
-            else:
-                if future_holder.failed:
-                    # request failed unrecoverably
-                    yield future_holder
-                else:
-
-                    # some more loading needs to be done
-                    try:
-                        self.thread_lock.acquire()
-                        self.futures.append(future_holder)
-                    finally:
-                        self.thread_lock.release()
-
-                    if cnt >= len(self.futures):
-                        cnt = 0
-                        time.sleep(0.3)
-
-    def __del__(self):
-        if self.thread_pool:
-            try:
-                if not self.thread_pool._shutdown:
-                    self.thread_pool.shutdown(False)
-            except Exception:
-                pass
-            del self.thread_pool
-
-
 # Facebook stuff override
 
-class FacebookAdsAsyncApi(object):
+class FacebookAsyncResponse(FacebookResponse):
+    def __init__(self, body=None, http_status=None, headers=None, call=None, error=None):
+        super(FacebookAsyncResponse, self).__init__(body, http_status, headers, call)
+        self._error = error
 
+    def is_success(self):
+        return not bool(self._error) and super(FacebookAsyncResponse, self).is_success()
+
+    def error(self):
+        """
+        Returns a FacebookRequestError (located in the exceptions module) with
+        an appropriate debug message.
+        """
+        if self._error:
+            return self._error
+        return super(FacebookAsyncResponse, self).error()
+
+
+class FacebookAdsAsyncApi(FacebookAdsApi):
     """Encapsulates session attributes and methods to make API calls.
-
-    Attributes:
-        SDK_VERSION (class): indicating sdk version.
-        HTTP_METHOD_GET (class): HTTP GET method name.
-        HTTP_METHOD_POST (class): HTTP POST method name
-        HTTP_METHOD_DELETE (class): HTTP DELETE method name
-        HTTP_DEFAULT_HEADERS (class): Default HTTP headers for requests made by
-            this sdk.
+    Provides an ability to issue several calls at the same time.
     """
-
-    SDK_VERSION = version.get_version()
-
-    API_VERSION = 'v' + str(re.sub('^(\d+\.\d+)\.\d+$', '\g<1>', SDK_VERSION))
-
-    HTTP_METHOD_GET = 'GET'
-
-    HTTP_METHOD_POST = 'POST'
-
-    HTTP_METHOD_DELETE = 'DELETE'
-
-    HTTP_DEFAULT_HEADERS = {
-        'User-Agent': "fb-python-ads-api-sdk-%s" % SDK_VERSION,
-    }
 
     _default_api = None
     _default_account_id = None
 
-    def __init__(self, session):
+    def __init__(self, session, threadpool_size):
         """Initializes the api instance.
 
         Args:
             session: FacebookSession object that contains a requests interface
                 and attribute GRAPH (the Facebook GRAPH API URL).
         """
-        self._session = session
-        self._num_requests_succeeded = 0
-        self._num_requests_attempted = 0
-        self.thread_lock = threading.Lock()
-        self.thread_pool = concurrent.futures.ThreadPoolExecutor(threadpool_size)
-        self._api = api
-        self.futures = []
-
-    def get_num_requests_attempted(self):
-        """Returns the number of calls attempted."""
-        return self._num_requests_attempted
-
-    def get_num_requests_succeeded(self):
-        """Returns the number of calls that succeeded."""
-        return self._num_requests_succeeded
+        super(FacebookAdsAsyncApi, self).__init__(session)
+        self._thread_lock = threading.Lock()
+        self._thread_pool = concurrent.futures.ThreadPoolExecutor(threadpool_size)
+        self._futures = {}
+        """:type: dict[int, facebookads.asyncobjects.AsyncEdgeIterator]"""
+        self._futures_ordered = []
 
     @classmethod
-    def init(
-        cls,
-        app_id=None,
-        app_secret=None,
-        access_token=None,
-        account_id=None,
-        pool_maxsize=10,
-        max_retries=0
-    ):
+    def init(cls, app_id=None, app_secret=None, access_token=None,
+             account_id=None, pool_maxsize=10, max_retries=0):
         session = FacebookSession(app_id, app_secret, access_token,
                                   pool_maxsize, max_retries)
-        api = cls(session)
+        api = cls(session, threadpool_size=pool_maxsize)
         cls.set_default_api(api)
 
         if account_id:
             cls.set_default_account_id(account_id)
 
-    @classmethod
-    def set_default_api(cls, api_instance):
-        """Sets the default api instance.
-
-        When making calls to the api, objects will revert to using the default
-        api if one is not specified when initializing the objects.
-
-        Args:
-            api_instance: The instance which to set as default.
-        """
-        cls._default_api = api_instance
-
-    @classmethod
-    def get_default_api(cls):
-        """Returns the default api instance."""
-        return cls._default_api
-
-    @classmethod
-    def set_default_account_id(cls, account_id):
-        account_id = str(account_id)
-        if account_id.find('act_') == -1:
-            raise ValueError(
-                "Account ID provided in FacebookAdsApi.set_default_account_id "
-                "expects a string that begins with 'act_'"
-            )
-        cls._default_account_id = account_id
-
-    @classmethod
-    def get_default_account_id(cls):
-        return cls._default_account_id
-
-    def call(
-        self,
-        method,
-        path,
-        params=None,
-        headers=None,
-        files=None,
-        url_override=None,
-        api_version=None,
-    ):
-        """Makes an API call.
-
-        Args:
-            method: The HTTP method name (e.g. 'GET').
-            path: A tuple of path tokens or a full URL string. A tuple will
-                be translated to a url as follows:
-                graph_url/tuple[0]/tuple[1]...
-                It will be assumed that if the path is not a string, it will be
-                iterable.
-            params (optional): A mapping of request parameters where a key
-                is the parameter name and its value is a string or an object
-                which can be JSON-encoded.
-            headers (optional): A mapping of request headers where a key is the
-                header name and its value is the header value.
-            files (optional): An optional mapping of file names to binary open
-                file objects. These files will be attached to the request.
-
-        Returns:
-            A FacebookResponse object containing the response body, headers,
-            http status, and summary of the call that was made.
-
-        Raises:
-            FacebookResponse.error() if the request failed.
-        """
+    def prepare_request_params(self, path, params, headers, files,
+                               url_override, api_version):
         if not params:
             params = {}
         if not headers:
             headers = {}
         if not files:
             files = {}
-
         if api_version and not re.search('v[0-9]+\.[0-9]+', api_version):
             raise FacebookBadObjectError(
-                'Please provide the API version in the following format: %s'
-                % self.API_VERSION
-            )
-
-        self._num_requests_attempted += 1
-
+                    'Please provide the API version in the following format: %s'
+                    % self.API_VERSION)
         if not isinstance(path, six.string_types):
             # Path is not a full path
             path = "/".join((
@@ -547,81 +350,140 @@ class FacebookAdsAsyncApi(object):
         # Include api headers in http request
         headers = headers.copy()
         headers.update(FacebookAdsApi.HTTP_DEFAULT_HEADERS)
-
         if params:
             params = _top_level_param_json_encode(params)
+        return path, params, headers, files
+
+    def non_throwing_call(self, method, path, params=None, headers=None, files=None,
+                          url_override=None, api_version=None):
+        """A non-throwing version of call method.
+        Returns FacebookAsyncResponse.
+
+        :param method: The HTTP method name (e.g. 'GET').
+        :param path: A tuple of path tokens or a full URL string. A tuple will
+            be translated to a url as follows:
+            graph_url/tuple[0]/tuple[1]...
+            It will be assumed that if the path is not a string, it will be
+            iterable.
+        :param params: (optional) A mapping of request parameters where a key
+            is the parameter name and its value is a string or an object
+            which can be JSON-encoded.
+        :param headers: (optional) A mapping of request headers where a key is the
+            header name and its value is the header value.
+        :param files: (optional) A mapping of file names to binary open
+            file objects. These files will be attached to the request.
+        :param url_override:
+        :param api_version:
+        :rtype: FacebookAsyncResponse
+        """
+        self._num_requests_attempted += 1
+        call_signature = {'method': method, 'path': path, 'params': params,
+                          'headers': headers, 'files': files},
 
         # Get request response and encapsulate it in a FacebookResponse
-        if method in ('GET', 'DELETE'):
-            response = self._session.requests.request(
-                method,
-                path,
-                params=params,
-                headers=headers,
-                files=files,
-            )
+        try:
+            if method in ('GET', 'DELETE'):
+                response = self._session.requests.request(
+                    method, path, params=params, headers=headers, files=files)
+            else:
+                response = self._session.requests.request(
+                    method, path, data=params, headers=headers, files=files)
+        except Exception as exc:
+            error = FacebookCallFailedError(call_signature, exc)
+            fb_response = FacebookAsyncResponse(call=call_signature, error=error)
         else:
-            response = self._session.requests.request(
-                method,
-                path,
-                data=params,
-                headers=headers,
-                files=files,
-            )
-        fb_response = FacebookResponse(
-            body=response.text,
-            headers=response.headers,
-            http_status=response.status_code,
-            call={
-                'method': method,
-                'path': path,
-                'params': params,
-                'headers': headers,
-                'files': files,
-            },
-        )
+            fb_response = FacebookAsyncResponse(
+                body=response.text, headers=response.headers,
+                http_status=response.status_code, call=call_signature)
 
-        if fb_response.is_failure():
-            raise fb_response.error()
-
-        self._num_requests_succeeded += 1
+        if fb_response.is_success():
+            self._num_requests_succeeded += 1
         return fb_response
 
-    def call_future(
-        self,
-        method,
-        path,
-        params=None,
-        headers=None,
-        files=None,
-        url_override=None,
-        api_version=None,
-    ):
-        pass
+    def call_future(self, edge_iter, method, path, params=None, headers=None, files=None,
+                    url_override=None, api_version=None):
+        """Adds an async API call task to a futures queue.
+        Returns a future holder object.
 
-    def new_batch(self):
+        :param facebookads.asyncobjects.AsyncEdgeIterator edge_iter:
+            edge iterator issuing this call
+        :param method: The HTTP method name (e.g. 'GET').
+        :param path: A tuple of path tokens or a full URL string. A tuple will
+            be translated to a url as follows:
+            graph_url/tuple[0]/tuple[1]...
+            It will be assumed that if the path is not a string, it will be
+            iterable.
+        :param params: (optional) A mapping of request parameters where a key
+            is the parameter name and its value is a string or an object
+            which can be JSON-encoded.
+        :param headers: (optional) A mapping of request headers where a key is the
+            header name and its value is the header value.
+        :param files: (optional) A mapping of file names to binary open
+            file objects. These files will be attached to the request.
+        :param url_override:
+        :param api_version:
+        :return:
         """
-        Returns a new FacebookAdsApiBatch, which when executed will go through
-        this api.
+        path, params, headers, files = self.prepare_request_params(
+                path, params, headers, files, url_override, api_version)
+
+        future = self._thread_pool.submit(
+                self.non_throwing_call, method, path,
+                params=params, headers=headers, files=files)
+
+        self.put_in_futures(edge_iter)
+        return future
+
+    def put_in_futures(self, edge_iter):
+        with self._thread_lock:
+            self._futures_ordered.append(id(edge_iter))
+            self._futures[id(edge_iter)] = edge_iter
+
+    def remove_from_futures(self, edge_iter):
+        with self._thread_lock:
+            del self._futures[id(edge_iter)]
+            self._futures_ordered.remove(id(edge_iter))
+
+    def get_async_results(self):
         """
-        return FacebookAdsApiBatch(api=self)
+        :rtype: list[FbFutureHolder]
+        """
+        time.sleep(0.01)
+        cnt = 0
+        while True:
+            cnt += 1
+            with self._thread_lock:
+                try:
+                    edge_iter_id = self._futures_ordered.pop(0)
+                    if not edge_iter_id in self._futures:
+                        continue
+                    edge_iter = self._futures.pop(edge_iter_id)
+                except IndexError:
+                    break
 
+            edge_iter.extract_results(self)
 
-# Helpers
+            if edge_iter.ready:
+                # loaded all the data
+                yield edge_iter
+            else:
+                if edge_iter.failed:
+                    # request failed unrecoverably
+                    yield edge_iter
+                else:
 
-def get_async_api(app_id=None, app_secret=None, access_token=None, pool_maxsize=10):
-    """
-    Returns FbApiAsync object with thread pool initialized and an associated session
-    with appropriately sized connection pool.
+                    # some more loading needs to be done
+                    self.put_in_futures(edge_iter)
 
-    :type app_id: str|int
-    :type app_secret: str
-    :type access_token: str
-    :type pool_maxsize: int
-    :rtype: FbApiAsync
-    """
-    retry_policy = Retry(total=None, connect=3, read=3, redirect=2)
-    ads_api = FacebookAdsAsyncApi(FacebookSession(
-            app_id=app_id, app_secret=app_secret, access_token=access_token,
-            pool_maxsize=pool_maxsize, max_retries=retry_policy))
-    return ads_api
+                    if cnt >= len(self._futures):
+                        cnt = 0
+                        time.sleep(0.3)
+
+    def __del__(self):
+        if self._thread_pool:
+            try:
+                if not self._thread_pool._shutdown:
+                    self._thread_pool.shutdown(False)
+            except Exception:
+                pass
+            del self._thread_pool
