@@ -1,13 +1,22 @@
 import time
 import random
 import logging
-from facebookads.objects import *
-from facebookads.asyncapi import FacebookAdsAsyncApi, FacebookAsyncResponse
+import facebookads.objects as baseobjects
+from facebookads.asyncapi import FacebookAdsAsyncApi
+from facebookads.exceptions import FacebookRequestError,\
+    FacebookUnavailablePropertyException
+from facebookads.utils.fberrcodes import FacebookErrorCodes
+
+try:
+    from urlparse import parse_qsl, urlparse, urlunsplit
+    from urllib import urlencode
+except ImportError:  # python 3 compatibility
+    from urllib.parse import parse_qsl, urlparse, urlunsplit, urlencode
 
 logger = logging.getLogger("facebookclient")
 
 
-class AsyncEdgeIterator(EdgeIterator):
+class AioEdgeIterator(baseobjects.EdgeIterator):
 
     """Asyncronously retrieves pages of data from object's connections.
     Each page is a list of dicts with the data.
@@ -39,25 +48,37 @@ class AsyncEdgeIterator(EdgeIterator):
                 is the parameter name and its value is a string or an object
                 which can be JSON-encoded.
         """
-        super(AsyncEdgeIterator, self).__init__(
-                source_object, target_objects_class,
-                fields=fields, params=params, include_summary=include_summary)
-        self._future = None
-
         self.limit = 1000 if limit is None else limit
         self.starting_limit = 1000 if limit is None else limit
+        if params is None:
+            params = {"limit": self.limit}
+        elif not params or "limit" not in params:
+            params["limit"] = self.limit
+
+        super(AioEdgeIterator, self).__init__(
+                source_object, target_objects_class,
+                fields=fields, params=params, include_summary=include_summary)
+
+        # AIO future holder
+        self._future = None
+        # last loaded response
+        self._response = None
+        """:type: facebookads.asyncapi.FacebookAsyncResponse"""
+
+        # iterator's state is:
+        # self._finished_iteration - True or False
+        # self.failed - True or False
+        self._request_failed = False
+        self._page_ready = False
 
         self.last_error_type = None
         self.last_error = None
         self.errors_streak = 0
-        self.with_timeout = 0
+        self.delay_next_call_for = 0
 
         self.success_cnt = 0
         self.success_streak = 0
         self.last_yield = time.time()
-
-        self.failed = False
-        self.ready = False
 
         self.tmp_retries = 25
         self.unknown_retries = 30
@@ -66,6 +87,8 @@ class AsyncEdgeIterator(EdgeIterator):
 
     def get_all_results(self):
         return self._queue
+
+    # AIO-based page loader
 
     def load_next_page(self):
         """Queries server for more nodes and loads them into the internal queue.
@@ -76,18 +99,17 @@ class AsyncEdgeIterator(EdgeIterator):
         if self._finished_iteration:
             return False
         if not self._future:
-            if not self.submit_next_page_async():
+            if not self.submit_next_page_aio():
                 return False
 
-        result = None
-        while not result:
-            result = self.check_for_the_next_page()
+        while not self._page_ready or self._request_failed:
+            self.extract_results()
+            time.sleep(0.2)
+        return self._page_ready and not self._request_failed and self._queue
 
-        success = self.read_next_page_result(result) > 0
-        self.submit_next_page_async()
-        return success
+    # AIO methods
 
-    def submit_next_page_async(self):
+    def submit_next_page_aio(self):
         """Puts future request into thread pool queue.
 
         Returns:
@@ -100,52 +122,43 @@ class AsyncEdgeIterator(EdgeIterator):
             if 'summary' not in self.params:
                 self.params['summary'] = True
 
+        self._request_failed = False
+        self._page_ready = False
         self._future = self._source_object.get_api_assured().call_future(
-                self, 'GET', self._path, params=self.params)
+                self, 'GET', self._path, params=self.params,
+                delay_next_call_for=self.delay_next_call_for)
         return True
 
-    def check_for_the_next_page(self):
-        if not self._future:
-            raise FacebookUnavailablePropertyException("first submit new async call")
-
-        if self._future.done():
-            result = self._future.result()
-            self._future = None
-            try:
-                self._source_object.get_api_assured().remove_from_futures(self)
-            except ValueError:
-                pass
-        else:
-            # TODO: handle timeouts here (resubmits)
-            result = None
-
-        # TODO: handle errors and recovery here (resubmits)
-        if result.is_failure():
-            return True
-
-        return result
-
-    def read_next_page_result(self, result):
+    def read_next_page_aio(self, response):
         """
 
-        :type result: facebookads.asyncapi.FacebookAsyncResponse
+        :type response: facebookads.asyncapi.FacebookAsyncResponse
         :return:
         """
-        response = result.json()
-        if 'paging' in response and 'next' in response['paging']:
-            self._path = response['paging']['next']
+        jresp = response.json()
+        if not jresp:
+            self._finished_iteration = True
+            return 0
+
+        if 'paging' in jresp and 'next' in jresp['paging']:
+            self._path = jresp['paging']['next']
+            pr = urlparse(jresp['paging']['next'])
+            self.params = dict(parse_qsl(pr.query, keep_blank_values=True))
+
+            # url components: scheme, netloc, url, query, fragment
+            self._path = urlunsplit((pr.scheme, pr.netloc, pr.path, None, None))
         else:
             # Indicate if this was the last page
             self._finished_iteration = True
 
         if (
             self._include_summary and
-            'summary' in response and
-            'total_count' in response['summary']
+            'summary' in jresp and
+            'total_count' in jresp['summary']
         ):
-            self._total_count = response['summary']['total_count']
+            self._total_count = jresp['summary']['total_count']
 
-        return self.build_objects_from_response(response)
+        return self.build_objects_from_response(jresp)
 
     def build_objects_from_response(self, response):
         if 'data' in response and isinstance(response['data'], list):
@@ -160,121 +173,119 @@ class AsyncEdgeIterator(EdgeIterator):
             data = response['data'] if 'data' in response else response
             self._queue.append(data)
             new_cnt = 1
+        self._response = None
 
         return new_cnt
 
-    # results processing
+    # results processing and state changes
 
-    def extract_results(self, facebook_client):
+    def extract_results(self):
         """
-        :type facebook_client: FbApiAsync
         :return: FbFutureHolder
         """
-        self.failed = False
+        self._request_failed = False
+        if not self._future:
+            raise FacebookUnavailablePropertyException("first submit new async call")
 
-        if self.future.done():
-            response = self.future.result()
-            del self.future
-            self.with_timeout = 0
+        if self._future.done():
+            result = self._future.result()
+            self._source_object.get_api_assured().remove_from_futures(self)
+            del self._future
+            self._future = None
 
-            if isinstance(response, Exception):
-                self.on_error(facebook_client, response)
+            self.delay_next_call_for = 0
+
+            if result.is_failure():
+                self.on_error(result)
             else:
-                self.response = response
-                """:type: AdsAPIResponse"""
-                self.on_success(facebook_client)
+                self.on_success(result)
 
         else:
-            if not (self.future.running() or self.future.cancelled()):
+            if not self._future.running() and not self._future.cancelled():
                 # still not running, just pending in a queue
-                self.failed = False
-                self.ready = False
+                self._request_failed = False
+                self._page_ready = False
                 self.last_yield = time.time()
-            elif self.future.cancelled():
+            elif self._future.cancelled():
                 # was cancelled
-                self.failed = True
-                self.with_timeout = 0
+                self._request_failed = True
+                self.delay_next_call_for = 0
                 logger.warn("request {} was cancelled, endpoint: {}, params: {}".format(
-                    str(self.future), str(self._path), self.params))
+                    str(self._future), str(self._path), self.params))
                 self.last_error = Exception("request {} was cancelled, endpoint: {}, params: {}".format(
-                    str(self.future), str(self._path), self.params))
-                del self.future
+                    str(self._future), str(self._path), self.params))
+                self._source_object.get_api_assured().remove_from_futures(self)
+                del self._future
+                self._future = None
             elif int(time.time() - self.last_yield) > 600:
                 # running for too long
                 self.future_timed_out()
             else:
                 # just running
-                self.failed = False
-                self.ready = False
+                self._request_failed = False
+                self._page_ready = False
         return self
 
     def future_timed_out(self):
-        self.failed = True
-        self.with_timeout = 0
+        self._request_failed = True
+        self.delay_next_call_for = 0
         logger.warn("request {} stuck, time: {}, endpoint: {}, params: {}".format(
-            str(self.future), int(time.time() - self.last_yield),
+            str(self._future), int(time.time() - self.last_yield),
             str(self._path), self.params))
         self.last_error = Exception(
             "request {} stuck, time: {}, endpoint: {}, params: {}".format(
-                str(self.future), int(time.time() - self.last_yield),
+                str(self._future), int(time.time() - self.last_yield),
                 str(self._path), self.params))
-        self.future.cancel()
-        del self.future
+        self._future.cancel()
+        del self._future
+        self._future = None
 
-    def on_success(self, facebook_client):
+    def on_success(self, response):
+        self._response = response
+        """:type: facebookads.asyncapi.FacebookAsyncResponse"""
         self.success_streak += 1
         self.success_cnt += 1
-        if self.response.all_loaded:
-            self.ready = True
-        else:
-            self.ready = False
+        self._page_ready = True
+        self.read_next_page_aio(self._response)
+        if not self._finished_iteration:
             if self.success_streak >= 10 and self.last_error_type != "too much data error" \
                     and self.limit < self.starting_limit:
                 self.change_the_next_page_limit(self.starting_limit, 2)
-            self.resubmit(facebook_client)
+            self.submit_next_page_aio()
 
-    def on_error(self, facebook_client, response):
+    def on_error(self, response):
         self.is_exception_fatal(response)
-        if not self.failed:
-            self.resubmit(facebook_client)
+        if not self._request_failed:
+            self.submit_next_page_aio()
         else:
             self.success_streak = 0
 
-    def resubmit(self, facebook_cient):
-        req_params = self.params
-        if not self.response:
-            req_params = _top_level_param_json_encode(self.params)
-        self.future = facebook_cient.thread_pool.submit(
-            facebook_cient.no_throw_wrapper, self.endpoint, method=self.method,
-            params=req_params, load_all=False, prev_response=self.response, holder=self)
-        return
-
     # errors handling
 
-    def is_exception_fatal(self, exc):
-        """
-        :type exc: Exception
-        """
-        if isinstance(exc, GraphAPITemporaryError):
-            self.recover_tmp_error(exc)
-        elif isinstance(exc, FacebookAPINoJsonError):
-            self.recover_tmp_error(exc)
-        elif isinstance(exc, GraphAPIUnknownError):
-            self.recover_unknown_error(exc)
-        elif isinstance(exc, GraphAPITooMuchDataError):
-            self.recover_too_much_data_error(exc)
-        elif isinstance(exc, GraphAPIRateLimitError):
-            self.recover_rate_limit_error(exc)
-        elif isinstance(exc, GraphAPIError):
-            self.recover_other_graph_error(exc)
+    def is_exception_fatal(self, resp):
+        exc = resp.error()
+        if isinstance(exc, FacebookRequestError):
+            if exc._api_error_code == FacebookErrorCodes.temporary:
+                self.recover_tmp_error(exc)
+            elif exc._api_error_code == FacebookErrorCodes.unknown:
+                self.recover_unknown_error(exc)
+            elif exc._api_error_code == FacebookErrorCodes.too_much_data:
+                self.recover_too_much_data_error(exc)
+            elif exc._api_error_code == FacebookErrorCodes.rate_limit:
+                self.recover_rate_limit_error(exc)
+            else:
+                self.recover_other_graph_error(exc)
         else:
-            self.set_fatal_error(exc)
-        return self.failed
+            if resp.body() and not resp.json():
+                self.recover_tmp_error(exc)
+            else:
+                self.set_fatal_error(exc)
+        return self._request_failed
 
     def set_fatal_error(self, exc, exception_type="fatal error"):
         self.set_last_error(exception_type)
         self.last_error = exc
-        self.failed = True
+        self._request_failed = True
         logger.error("While loading url: {}, method GET with params: {}. "
                      "Caught an error: {}".format(
             str(self._path), str(self.params), str(exc)))
@@ -287,7 +298,7 @@ class AsyncEdgeIterator(EdgeIterator):
             str(self._path), str(self.params), str(exc)))
 
     def recover_other_graph_error(self, exc):
-        if exc.http_code and 400 <= exc.http_code < 500:
+        if exc._http_status and 400 <= exc._http_status < 500:
             self.set_fatal_error(exc)
         else:
             self.recover_unknown_error(exc)
@@ -298,7 +309,7 @@ class AsyncEdgeIterator(EdgeIterator):
             self.set_fatal_error(exc, err_type)
         else:
             self.set_non_fatal_error(exc, err_type)
-            self.with_timeout = 5 + 5 * self.errors_streak
+            self.delay_next_call_for = 5 + 5 * self.errors_streak
             self.change_the_next_page_limit()
 
     def recover_too_much_data_error(self, exc):
@@ -315,17 +326,20 @@ class AsyncEdgeIterator(EdgeIterator):
             self.set_fatal_error(exc, err_type)
         else:
             self.set_non_fatal_error(exc, err_type)
-            self.with_timeout = 5 + self.pause_min * self.errors_streak
+            self.delay_next_call_for = 5 + self.pause_min * self.errors_streak
             self.change_the_next_page_limit()
 
     def recover_rate_limit_error(self, exc):
         err_type = "rate limit error"
         self.set_non_fatal_error(exc, err_type)
-        self.with_timeout = 10 + random.randint(0, 9) + 10 * self.errors_streak
+        self.delay_next_call_for = 10 + random.randint(0, 9) + 10 * self.errors_streak
 
     # error helpers
 
     def change_the_next_page_limit(self, new_limit=None, lowest_limit=2):
+        if self._finished_iteration:
+            return
+
         if new_limit is None:
             new_limit = int(self.limit / 2)
         self.limit = int(new_limit)
@@ -334,31 +348,10 @@ class AsyncEdgeIterator(EdgeIterator):
         elif self.limit < 1:
             self.limit = 1
 
-        if self.response:
-            self.response.change_next_page_limit(self.limit, lowest_limit=lowest_limit)
-            if not self._paging or 'next' not in self._paging:
-                return
-
-            pr = urlparse(self._paging['next'])
-            params = dict(parse_qsl(pr.query, keep_blank_values=True))
-            if 'limit' not in params or not params['limit'] or not params['limit'].isdigit():
-                old_limit = 2000
-            else:
-                old_limit = int(params['limit'])
-
-            if new_limit is None:
-                new_limit = int(old_limit / 2)
-            if new_limit < lowest_limit:
-                new_limit = lowest_limit
-            params['limit'] = str(new_limit)
-            new_url = urlunparse((pr.scheme, pr.netloc, pr.path, pr.params,
-                                  urlencode(params), pr.fragment))
-            self._paging['next'] = new_url
-
-        elif 'limit' in self.params and self.params['limit']:
+        if 'limit' in self.params and self.params['limit']:
             self.params['limit'] = self.limit
         else:
-            self.params['limit'] = 100
+            self.params['limit'] = self.starting_limit
         return
 
     def set_last_error(self, err_type):
@@ -369,7 +362,7 @@ class AsyncEdgeIterator(EdgeIterator):
             self.last_error_type = err_type
 
 
-class AbstractCrudAsyncObject(AbstractCrudObject):
+class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
     """
     Extends AbstractCrudObject and implements async iter_edge operation.
     """
@@ -381,13 +374,12 @@ class AbstractCrudAsyncObject(AbstractCrudObject):
         :type params: didct
         :type fields: list
         :type api: FacebookAdsAsyncApi
-        :rtype: list[AbstractCrudAsyncObject]
+        :rtype: list[AbstractCrudAioObject]
         """
         api = api or FacebookAdsAsyncApi.get_default_api()
         params = dict(params or {})
         cls._assign_fields_to_params(fields, params)
         params['ids'] = ','.join(map(str, ids))
-        # TODO: check if it's faster to make separate calls for each id, but in parallell
         response = api.call(
             'GET',
             ['/'],
@@ -412,47 +404,32 @@ class AbstractCrudAsyncObject(AbstractCrudObject):
 
     # Helpers
 
-    def iterate_edge(self, target_objects_class, fields=None, params=None,
-                     fetch_first_page=True, include_summary=True):
+    def iterate_edge_aio(self, target_objects_class, fields=None, params=None,
+                         include_summary=True, limit=1000):
         """
         Returns EdgeIterator with argument self as source_object and
         the rest as given __init__ arguments.
 
-        Note: list(iterate_edge(...)) can prefetch all the objects.
+        Note: list(iterate_edge_aio(...)) can prefetch all the objects.
         """
         source_object = self
-        iterator = AsyncEdgeIterator(
+        iterator = AioEdgeIterator(
             source_object,
             target_objects_class,
             fields=fields,
             params=params,
             include_summary=include_summary,
+            limit=limit
         )
-        iterator.submit_next_page_async()
+        iterator.submit_next_page_aio()
         return iterator
 
-    def iterate_edge_async(self, target_objects_class, fields=None,
-                           params=None, async=False, include_summary=True):
+    def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None):
         """
-        Behaves as iterate_edge(...) if parameter async if False
-        (Default value)
-
-        If async is True:
-        Returns an AsyncJob which can be checked using remote_read()
+        Returns an AsyncAioJob which can be checked using remote_read()
         to verify when the job is completed and the result ready to query
         or download using get_result()
         """
-        synchronous = not async
-        synchronous_iterator = self.iterate_edge(
-            target_objects_class,
-            fields,
-            params,
-            fetch_first_page=synchronous,
-            include_summary=include_summary,
-        )
-        if synchronous:
-            return synchronous_iterator
-
         if not params:
             params = {}
         else:
@@ -460,7 +437,7 @@ class AbstractCrudAsyncObject(AbstractCrudObject):
         self.__class__._assign_fields_to_params(fields, params)
 
         # To force an async response from an edge, do a POST instead of GET.
-        # The response comes in the format of an AsyncJob which
+        # The response comes in the format of an AsyncAioJob which
         # indicates the progress of the async request.
         response = self.get_api_assured().call(
             'POST',
@@ -468,187 +445,296 @@ class AbstractCrudAsyncObject(AbstractCrudObject):
             params=params,
         ).json()
 
-        # AsyncJob stores the real iterator
+        # AsyncAioJob stores the real iterator
         # for when the result is ready to be queried
-        result = AsyncJob(target_objects_class)
+        result = AsyncAioJob(target_objects_class)
 
         if 'report_run_id' in response:
             response['id'] = response['report_run_id']
         result._set_data(response)
         return result
 
-    def edge_object(self, target_objects_class, fields=None, params=None):
+
+class AdUser(AbstractCrudAioObject, baseobjects.AdUser):
+    pass
+
+
+class Page(AbstractCrudAioObject, baseobjects.Page):
+    pass
+
+
+class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
+    def get_activities_aio(self, fields=None, params=None):
+        """Returns iterator over Activity's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.Activity, fields, params)
+
+    def get_ad_users_aio(self, fields=None, params=None):
+        """Returns iterator over AdUser's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.AdUser, fields, params)
+
+    def get_campaigns_aio(self, fields=None, params=None):
+        """Returns iterator over Campaign's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.Campaign, fields, params)
+
+    def get_ad_sets_aio(self, fields=None, params=None):
+        """Returns iterator over AdSet's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.AdSet, fields, params)
+
+    def get_ads_aio(self, fields=None, params=None):
+        """Returns iterator over Ad's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.Ad, fields, params)
+
+    def get_ad_conversion_pixels_aio(self, fields=None, params=None):
         """
-        Returns first object when iterating over EdgeIterator with argument
-        self as source_object and the rest as given __init__ arguments.
+        Returns iterator over AdConversionPixels associated with this account.
         """
-        params = {} if not params else params.copy()
-        params['limit'] = '1'
-        for obj in self.iterate_edge(
-            target_objects_class,
-            fields=fields,
-            params=params,
-        ):
-            return obj
+        return self.iterate_edge_aio(baseobjects.AdConversionPixel, fields, params)
 
-        # if nothing found, return None
-        return None
+    def get_ad_creatives_aio(self, fields=None, params=None):
+        """Returns iterator over AdCreative's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.AdCreative, fields, params)
+
+    def get_ad_images_aio(self, fields=None, params=None):
+        """Returns iterator over AdImage's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.AdImage, fields, params)
+
+    def get_insights_aio(self, fields=None, params=None, async=False):
+        if async:
+            return self.iterate_edge_async_aio(
+                Insights,
+                fields,
+                params
+            )
+        return self.iterate_edge_aio(
+            Insights,
+            fields,
+            params,
+            include_summary=False,
+        )
+
+    def get_broad_category_targeting_aio(self, fields=None, params=None):
+        """
+        Returns iterator over BroadCategoryTargeting's associated with this
+        account.
+        """
+        return self.iterate_edge_aio(baseobjects.BroadCategoryTargeting, fields, params)
+
+    def get_connection_objects_aio(self, fields=None, params=None):
+        """
+        Returns iterator over ConnectionObject's associated with this account.
+        """
+        return self.iterate_edge_aio(baseobjects.ConnectionObject, fields, params)
+
+    def get_custom_audiences_aio(self, fields=None, params=None):
+        """
+        Returns iterator over CustomAudience's associated with this account.
+        """
+        return self.iterate_edge_aio(baseobjects.CustomAudience, fields, params)
+
+    def get_partner_categories_aio(self, fields=None, params=None):
+        """
+        Returns iterator over PartnerCategory's associated with this account.
+        """
+        return self.iterate_edge_aio(baseobjects.PartnerCategory, fields, params)
+
+    def get_rate_cards_aio(self, fields=None, params=None):
+        """Returns iterator over RateCard's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.RateCard, fields, params)
+
+    def get_reach_estimate_aio(self, fields=None, params=None):
+        """
+        Returns iterator over ReachEstimate's associated with this account.
+        """
+        return self.iterate_edge_aio(baseobjects.ReachEstimate, fields, params)
+
+    def get_transactions_aio(self, fields=None, params=None):
+        """Returns iterator over Transaction's associated with this account."""
+        return self.iterate_edge_aio(baseobjects.Transaction, fields, params)
+
+    def get_ad_preview_aio(self, fields=None, params=None):
+        """Returns iterator over previews generated under this account."""
+        return self.iterate_edge_aio(baseobjects.GeneratePreview, fields, params)
+
+    def get_ad_labels_aio(self, fields=None, params=None):
+        """
+        Returns all the ad labels associated with the ad account
+        """
+        return self.iterate_edge_aio(baseobjects.AdLabel, fields, params)
+
+    def get_ad_creatives_by_labels_aio(self, fields=None, params=None):
+        """
+        Returns the ad creatives associated with the ad AdLabel
+        """
+        return self.iterate_edge_aio(baseobjects.AdCreativesByLabels, fields, params)
+
+    def get_ads_by_labels_aio(self, fields=None, params=None):
+        """
+        Returns the ad Groups associated with the ad AdLabel
+        """
+        return self.iterate_edge_aio(baseobjects.AdsByLabels, fields, params)
+
+    def get_adsets_by_labels_aio(self, fields=None, params=None):
+        """
+        Returns the ad sets associated with the ad AdLabel
+        """
+        return self.iterate_edge_aio(baseobjects.AdSetsByLabels, fields, params)
+
+    def get_campaigns_by_labels_aio(self, fields=None, params=None):
+        """
+        Returns the ad campaigns associated with the ad AdLabel
+        """
+        return self.iterate_edge_aio(baseobjects.CampaignsByLabels, fields, params)
+
+    def get_minimum_budgets_aio(self, fields=None, params=None, limit=1000):
+        """
+        Returns the minimum budget associated with the AdAccount
+        """
+        return self.iterate_edge_aio(baseobjects.MinimumBudget, fields, params,
+                                     limit=limit)
+
+    def get_ad_place_page_sets_aio(self, fields=None, params=None):
+        """
+        Returns the ad place page sets associated with the AdAccount
+        """
+        return self.iterate_edge_aio(baseobjects.AdPlacePageSet, fields, params)
+
+    def get_custom_conversions_aio(self, fields=None, params=None):
+        """
+        Returns the custom conversions associated with the AdAccount
+        """
+        return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params)
 
 
-class AdUser(AbstractCrudAsyncObject, AdUser):
+class AdAccountGroup(AbstractCrudAioObject, baseobjects.AdAccountGroup):
     pass
 
 
-class Page(AbstractCrudAsyncObject, Page):
+class AdAccountGroupUser(AbstractCrudAioObject, baseobjects.AdAccountGroupUser):
     pass
 
 
-class AdAccount(AbstractCrudAsyncObject, AdAccount):
+class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
     pass
 
 
-class AdAccountGroup(AbstractCrudAsyncObject, AdAccountGroup):
+class AdSet(AbstractCrudAioObject, baseobjects.AdSet):
     pass
 
 
-class AdAccountGroupUser(AbstractCrudAsyncObject, AdAccountGroupUser):
+class Ad(AbstractCrudAioObject, baseobjects.Ad):
     pass
 
 
-class Campaign(AbstractCrudAsyncObject, Campaign):
+class AdConversionPixel(AbstractCrudAioObject, baseobjects.AdConversionPixel):
     pass
 
 
-class AdSet(AbstractCrudAsyncObject, AdSet):
+class AdsPixel(AbstractCrudAioObject, baseobjects.AdsPixel):
     pass
 
 
-class Ad(AbstractCrudAsyncObject, Ad):
+class AdCreative(AbstractCrudAioObject, baseobjects.AdCreative):
     pass
 
 
-class AdConversionPixel(AbstractCrudAsyncObject, AdConversionPixel):
+class AdImage(AbstractCrudAioObject, baseobjects.AdImage):
     pass
 
 
-class AdsPixel(AbstractCrudAsyncObject, AdsPixel):
+class AdVideo(AbstractCrudAioObject, baseobjects.AdVideo):
     pass
 
 
-class AdCreative(AbstractCrudAsyncObject, AdCreative):
+class ClickTrackingTag(AbstractCrudAioObject, baseobjects.ClickTrackingTag):
     pass
 
 
-class AdImage(AbstractCrudAsyncObject, AdImage):
+class CustomAudience(AbstractCrudAioObject, baseobjects.CustomAudience):
     pass
 
 
-class AdVideo(AbstractCrudAsyncObject, AdVideo):
+class LookalikeAudience(AbstractCrudAioObject, baseobjects.LookalikeAudience):
     pass
 
 
-class ClickTrackingTag(AbstractCrudAsyncObject, ClickTrackingTag):
+class PartnerCategory(AbstractCrudAioObject, baseobjects.PartnerCategory):
     pass
 
 
-class CustomAudience(AbstractCrudAsyncObject, CustomAudience):
+class ReachFrequencyPrediction(AbstractCrudAioObject, baseobjects.ReachFrequencyPrediction):
     pass
 
 
-class LookalikeAudience(AbstractCrudAsyncObject, LookalikeAudience):
+class Business(AbstractCrudAioObject, baseobjects.Business):
     pass
 
 
-class PartnerCategory(AbstractCrudAsyncObject, PartnerCategory):
+class ProductCatalog(AbstractCrudAioObject, baseobjects.ProductCatalog):
     pass
 
 
-class ReachFrequencyPrediction(AbstractCrudAsyncObject, ReachFrequencyPrediction):
+class ProductFeed(AbstractCrudAioObject, baseobjects.ProductFeed):
     pass
 
 
-class Business(AbstractCrudAsyncObject, Business):
+class ProductFeedUpload(AbstractCrudAioObject, baseobjects.ProductFeedUpload):
     pass
 
 
-class ProductCatalog(AbstractCrudAsyncObject, ProductCatalog):
+class ProductFeedUploadError(AbstractCrudAioObject, baseobjects.ProductFeedUploadError):
     pass
 
 
-class ProductFeed(AbstractCrudAsyncObject, ProductFeed):
+class ProductSet(AbstractCrudAioObject, baseobjects.ProductSet):
     pass
 
 
-class ProductFeedUpload(AbstractCrudAsyncObject, ProductFeedUpload):
+class ProductGroup(AbstractCrudAioObject, baseobjects.ProductGroup):
     pass
 
 
-class ProductFeedUploadError(AbstractCrudAsyncObject, ProductFeedUploadError):
+class Product(AbstractCrudAioObject, baseobjects.Product):
     pass
 
 
-class ProductSet(AbstractCrudAsyncObject, ProductSet):
+class ProductAudience(AbstractCrudAioObject, baseobjects.ProductAudience):
     pass
 
 
-class ProductGroup(AbstractCrudAsyncObject, ProductGroup):
+class AdLabel(AbstractCrudAioObject, baseobjects.AdLabel):
     pass
 
 
-class Product(AbstractCrudAsyncObject, Product):
+class Lead(AbstractCrudAioObject, baseobjects.Lead):
     pass
 
 
-class ProductAudience(AbstractCrudAsyncObject, ProductAudience):
+class LeadgenForm(AbstractCrudAioObject, baseobjects.LeadgenForm):
     pass
 
 
-class AdLabel(AbstractCrudAsyncObject, AdLabel):
+class AdPlacePageSet(AbstractCrudAioObject, baseobjects.AdPlacePageSet):
     pass
 
 
-class Lead(AbstractCrudAsyncObject, Lead):
+class CustomConversion(AbstractCrudAioObject, baseobjects.CustomConversion):
     pass
 
 
-class LeadgenForm(AbstractCrudAsyncObject, LeadgenForm):
-    pass
-
-
-class AdPlacePageSet(AbstractCrudAsyncObject, AdPlacePageSet):
-    pass
-
-
-class CustomConversion(AbstractCrudAsyncObject, CustomConversion):
-    pass
-
-
-class Insights(AbstractCrudAsyncObject, Insights):
+class Insights(AbstractCrudAioObject, baseobjects.Insights):
     # TODO: implement async get method
     pass
 
 
-class AsyncJob(CannotCreate, AbstractCrudAsyncObject, AbstractCrudObject):
-
-    class Field(object):
-        id = 'id'
-        async_status = 'async_status'
-        async_percent_completion = 'async_percent_completion'
-
-    def __init__(self, target_objects_class):
-        AbstractCrudObject.__init__(self, target_objects_class)
-        self.target_objects_class = target_objects_class
+class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
     def get_result(self, params=None):
         """
         Gets the final result from an async job
         Accepts params such as limit
         """
-        return self.iterate_edge(
+        return self.iterate_edge_aio(
             self.target_objects_class,
             params=params,
             include_summary=False,
         )
-
-    def __nonzero__(self):
-        return self[self.Field.async_percent_completion] == 100
