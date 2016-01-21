@@ -505,20 +505,6 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         """Returns iterator over AdImage's associated with this account."""
         return self.iterate_edge_aio(baseobjects.AdImage, fields, params, limit=limit)
 
-    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
-        if async:
-            return self.iterate_edge_async_aio(
-                Insights,
-                fields,
-                params
-            )
-        return self.iterate_edge_aio(
-            Insights,
-            fields,
-            params,
-            include_summary=False,
-        )
-
     def get_broad_category_targeting_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over BroadCategoryTargeting's associated with this
@@ -611,6 +597,20 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         """
         return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params, limit=limit)
 
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+        if async:
+            return self.iterate_edge_async_aio(
+                Insights,
+                fields,
+                params
+            )
+        return self.iterate_edge_aio(
+            Insights,
+            fields,
+            params,
+            include_summary=False,
+        )
+
 
 class AdAccountGroup(AbstractCrudAioObject, baseobjects.AdAccountGroup):
     pass
@@ -621,15 +621,83 @@ class AdAccountGroupUser(AbstractCrudAioObject, baseobjects.AdAccountGroupUser):
 
 
 class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
-    pass
+
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+        if async:
+            return self.iterate_edge_async_aio(
+                Insights,
+                fields,
+                params
+            )
+        return self.iterate_edge_aio(
+            Insights,
+            fields,
+            params,
+            include_summary=False,
+        )
 
 
 class AdSet(AbstractCrudAioObject, baseobjects.AdSet):
-    pass
+
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+        if async:
+            return self.iterate_edge_async_aio(
+                Insights,
+                fields,
+                params
+            )
+        return self.iterate_edge_aio(
+            Insights,
+            fields,
+            params,
+            include_summary=False,
+        )
 
 
 class Ad(AbstractCrudAioObject, baseobjects.Ad):
-    pass
+    def get_ad_creatives_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over AdCreatives associated with this ad."""
+        return self.iterate_edge_aio(AdCreative, fields, params, limit=limit)
+
+    def get_targeting_description_aio(self, fields=None, params=None, limit=1000):
+        """Returns TargetingDescription object associated with this ad."""
+        return self.edge_object(baseobjects.TargetingDescription, fields, params)
+
+    def get_keyword_stats_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over KeywordStats associated with this ad."""
+        return self.edge_object(baseobjects.KeywordStats, fields, params)
+
+    def get_ad_preview_aio(self, fields=None, params=None, limit=1000):
+        """Returns AdPreview object associated with this ad."""
+        return self.edge_object(baseobjects.AdPreview, fields, params)
+
+    def get_reach_estimate_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over ReachEstimates associated with this ad."""
+        return self.iterate_edge_aio(baseobjects.ReachEstimate, fields, params, limit=limit)
+
+    def get_click_tracking_tag_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over ClickTrackingTags associated with this ad."""
+        return self.iterate_edge_aio(ClickTrackingTag, fields, params, limit=limit)
+
+    def get_leads_aio(self, fields=None, params=None, limit=1000):
+        """
+        Returns all the leads associated with the Ad
+        """
+        return self.iterate_edge_aio(Lead, fields, params, limit=limit)
+
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+        if async:
+            return self.iterate_edge_async_aio(
+                Insights,
+                fields,
+                params
+            )
+        return self.iterate_edge_aio(
+            Insights,
+            fields,
+            params,
+            include_summary=False,
+        )
 
 
 class AdConversionPixel(AbstractCrudAioObject, baseobjects.AdConversionPixel):
@@ -673,7 +741,25 @@ class ReachFrequencyPrediction(AbstractCrudAioObject, baseobjects.ReachFrequency
 
 
 class Business(AbstractCrudAioObject, baseobjects.Business):
-    pass
+    def get_ad_account_aio(self, fields=None, params=None, limit=1000):
+        return self.iterate_edge_aio(AdAccount, fields, params, limit=limit)
+
+    def get_product_catalogs_aio(self, fields=None, params=None):
+        return self.iterate_edge_aio(ProductCatalog, fields, params)
+
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+        if async:
+            return self.iterate_edge_async_aio(
+                Insights,
+                fields,
+                params
+            )
+        return self.iterate_edge_aio(
+            Insights,
+            fields,
+            params,
+            include_summary=False,
+        )
 
 
 class ProductCatalog(AbstractCrudAioObject, baseobjects.ProductCatalog):

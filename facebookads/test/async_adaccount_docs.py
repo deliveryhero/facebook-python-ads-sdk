@@ -227,7 +227,7 @@ class AdAccountAsyncDocsTestCase(AsyncDocsTestCase):
                 baseobjects.TargetingSpecsField.countries: ['US'],
             },
         }
-        targeting_desc = adgroup.get_targeting_description(fields=[
+        targeting_desc = adgroup.get_targeting_description_aio(fields=[
             'targetingsentencelines'
         ], params={
             'targeting_spec': targeting
