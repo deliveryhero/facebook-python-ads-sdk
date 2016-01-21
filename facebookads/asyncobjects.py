@@ -741,7 +741,7 @@ class ReachFrequencyPrediction(AbstractCrudAioObject, baseobjects.ReachFrequency
 
 
 class Business(AbstractCrudAioObject, baseobjects.Business):
-    def get_ad_account_aio(self, fields=None, params=None, limit=1000):
+    def get_ad_accounts_aio(self, fields=None, params=None, limit=1000):
         return self.iterate_edge_aio(AdAccount, fields, params, limit=limit)
 
     def get_product_catalogs_aio(self, fields=None, params=None):

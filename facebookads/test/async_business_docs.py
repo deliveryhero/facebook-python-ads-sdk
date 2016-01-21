@@ -41,7 +41,7 @@ class BusinessDocsTestCase(AsyncDocsTestCase):
 
     def test_get_ad_accounts(self):
         business = Business(AsyncDocsDataStore.get('business_id'))
-        accounts = business.get_ad_account_aio()
+        accounts = business.get_ad_accounts_aio()
         accounts = [x for x in accounts]
         self.assertGreaterEqual(len(accounts), 1)
         self.store_response(accounts)
