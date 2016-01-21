@@ -621,6 +621,13 @@ class AdAccountGroupUser(AbstractCrudAioObject, baseobjects.AdAccountGroupUser):
 
 
 class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
+    def get_ad_sets_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over AdSet's associated with this campaign."""
+        return self.iterate_edge_aio(AdSet, fields, params, limit=limit)
+
+    def get_ads_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over Ad's associated with this campaign."""
+        return self.iterate_edge_aio(Ad, fields, params, limit=limit)
 
     def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
         if async:
@@ -638,6 +645,13 @@ class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
 
 
 class AdSet(AbstractCrudAioObject, baseobjects.AdSet):
+    def get_ads_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over Ad's associated with this set."""
+        return self.iterate_edge_aio(Ad, fields, params, limit=limit)
+
+    def get_ad_creatives_aio(self, fields=None, params=None, limit=1000):
+        """Returns iterator over AdCreative's associated with this set."""
+        return self.iterate_edge_aio(AdCreative, fields, params, limit=limit)
 
     def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
         if async:
