@@ -81,7 +81,7 @@ class AdAccountAsyncDocsTestCase(AsyncDocsTestCase):
         activities = account.get_activities_aio(fields=[
             baseobjects.Activity.Field.event_type,
             baseobjects.Activity.Field.event_time,
-        ], limit=10)
+        ], limit=1000)
         self.store_response(activities[0])
         self.assertEqual(len(activities), 10)
         activities.load_next_page()
@@ -108,14 +108,18 @@ class AdAccountAsyncDocsTestCase(AsyncDocsTestCase):
         self.store_response(campaigns)
 
     def test_get_ad_sets(self):
-        account = AdAccount(AsyncDocsDataStore.get('adaccount_id'))
-        adsets = account.get_ad_sets_aio(fields=[
-            AdSet.Field.name,
-            AdSet.Field.bid_info,
-            AdSet.Field.configured_status,
-            AdSet.Field.daily_budget,
-            AdSet.Field.targeting,
-        ])
+        for acc_id in [AsyncDocsDataStore.get('adaccount_id')]:
+            account = AdAccount(acc_id)
+            account.get_ad_sets_aio(fields=[
+                AdSet.Field.name,
+                AdSet.Field.bid_info,
+                AdSet.Field.configured_status,
+                AdSet.Field.daily_budget,
+                AdSet.Field.targeting,
+            ])
+        adsets = []
+        for res in FacebookAdsAsyncApi.get_default_api().get_all_async_results():
+            adsets += res.get_all_results()
         self.store_response(adsets)
 
     def test_get_ads(self):
@@ -148,11 +152,16 @@ class AdAccountAsyncDocsTestCase(AsyncDocsTestCase):
         self.store_response(images)
 
     def test_get_ad_conversion_pixels(self):
-        account = AdAccount(AsyncDocsDataStore.get('adaccount_id'))
-        pixels = account.get_ad_conversion_pixels_aio(fields=[
-            AdImage.Field.hash,
-        ])
-        self.store_response(pixels)
+        for acc_id in [AsyncDocsDataStore.get('adaccount_id')]:
+            account = AdAccount(acc_id)
+            account.get_ad_conversion_pixels_aio(fields=[
+                AdImage.Field.hash,
+            ])
+        all_pixels = {}
+        for res in FacebookAdsAsyncApi.get_default_api().get_all_async_results():
+            account_pixels = res.get_all_results()
+            all_pixels[res._source_object[AdAccount.Field.id]] = account_pixels
+        self.store_response(all_pixels)
 
     def test_get_broad_category_targeting(self):
         account = AdAccount(AsyncDocsDataStore.get('adaccount_id'))

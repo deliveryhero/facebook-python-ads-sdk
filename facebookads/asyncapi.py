@@ -3,7 +3,6 @@ import re
 import six
 import time
 import logging
-import weakref
 import concurrent.futures
 import threading
 from six.moves import _thread as thread
@@ -53,7 +52,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
         super(FacebookAdsAsyncApi, self).__init__(session)
         self._thread_lock = threading.Lock()
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(threadpool_size)
-        self._futures = weakref.WeakValueDictionary()
+        self._futures = {}
         """:type: dict[int, facebookads.asyncobjects.AioEdgeIterator]"""
         self._futures_ordered = []
 
