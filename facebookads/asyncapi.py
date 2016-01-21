@@ -6,6 +6,7 @@ import logging
 import weakref
 import concurrent.futures
 import threading
+from six.moves import _thread as thread
 
 from facebookads.exceptions import FacebookCallFailedError, FacebookBadObjectError
 from facebookads.api import FacebookSession, FacebookResponse, \
@@ -243,6 +244,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                     # request failed unrecoverably
                     yield edge_iter
                 else:
+                    edge_iter.submit_next_page_aio()
 
                     # some more loading needs to be done
                     self.put_in_futures(edge_iter)
@@ -268,6 +270,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
             edge_iter.extract_results()
 
             if edge_iter._page_ready:
+                edge_iter.submit_next_page_aio()
                 # loaded all the data
                 yield edge_iter
             else:
@@ -275,6 +278,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                     # request failed unrecoverably
                     yield edge_iter
                 else:
+                    edge_iter.submit_next_page_aio()
 
                     # some more loading needs to be done
                     self.put_in_futures(edge_iter)

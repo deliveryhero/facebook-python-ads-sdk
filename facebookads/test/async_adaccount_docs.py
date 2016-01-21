@@ -33,7 +33,7 @@ class AdAccountAsyncDocsTestCase(AsyncDocsTestCase):
         image = self.create_image()
         AsyncDocsDataStore.set('ad_account_image_hash', image['hash'])
 
-    def atest_get_insights_async(self):
+    def test_get_insights_async(self):
         account = AdAccount(AsyncDocsDataStore.get('adaccount_id'))
         job = account.get_insights_aio(fields=[
             Insights.Field.campaign_id,
@@ -81,8 +81,11 @@ class AdAccountAsyncDocsTestCase(AsyncDocsTestCase):
         activities = account.get_activities_aio(fields=[
             baseobjects.Activity.Field.event_type,
             baseobjects.Activity.Field.event_time,
-        ])
+        ], limit=10)
         self.store_response(activities[0])
+        self.assertEqual(len(activities), 10)
+        activities.load_next_page()
+        self.assertEqual(len(activities), 20)
 
     def test_get_my_account(self):
         account = AdAccount.get_my_account()
@@ -170,7 +173,7 @@ class AdAccountAsyncDocsTestCase(AsyncDocsTestCase):
 
     def test_get_partner_categories(self):
         account = AdAccount(AsyncDocsDataStore.get('adaccount_id'))
-        partner_categories = account.get_partner_categories_aio()
+        partner_categories = account.get_partner_categories_aio(limit=10)
         self.store_response(partner_categories[0])
 
     def test_get_rate_cards(self):

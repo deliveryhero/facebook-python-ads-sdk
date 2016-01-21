@@ -85,6 +85,11 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         self.too_much_data_retries = 14
         self.pause_min = 0.5
 
+    def __getitem__(self, index):
+        if not self._queue:
+            self.load_next_page()
+        return self._queue[index]
+
     def get_all_results(self):
         return self._queue
 
@@ -105,7 +110,9 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         while not self._page_ready or self._request_failed:
             self.extract_results()
             time.sleep(0.2)
-        return self._page_ready and not self._request_failed and self._queue
+        success = self._page_ready and not self._request_failed and self._queue
+        self.submit_next_page_aio()
+        return success
 
     # AIO methods
 
@@ -245,19 +252,19 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         """:type: facebookads.asyncapi.FacebookAsyncResponse"""
         self.success_streak += 1
         self.success_cnt += 1
-        self._page_ready = True
         self.read_next_page_aio(self._response)
+        self._page_ready = True
         if not self._finished_iteration:
             if self.success_streak >= 10 and self.last_error_type != "too much data error" \
                     and self.limit < self.starting_limit:
                 self.change_the_next_page_limit(self.starting_limit, 2)
-            self.submit_next_page_aio()
 
     def on_error(self, response):
         self.is_exception_fatal(response)
         if not self._request_failed:
             self.submit_next_page_aio()
         else:
+            self._finished_iteration = True
             self.success_streak = 0
 
     # errors handling
@@ -464,41 +471,41 @@ class Page(AbstractCrudAioObject, baseobjects.Page):
 
 
 class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
-    def get_activities_aio(self, fields=None, params=None):
+    def get_activities_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over Activity's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.Activity, fields, params)
+        return self.iterate_edge_aio(baseobjects.Activity, fields, params, limit=limit)
 
-    def get_ad_users_aio(self, fields=None, params=None):
+    def get_ad_users_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdUser's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdUser, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdUser, fields, params, limit=limit)
 
-    def get_campaigns_aio(self, fields=None, params=None):
+    def get_campaigns_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over Campaign's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.Campaign, fields, params)
+        return self.iterate_edge_aio(baseobjects.Campaign, fields, params, limit=limit)
 
-    def get_ad_sets_aio(self, fields=None, params=None):
+    def get_ad_sets_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdSet's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdSet, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdSet, fields, params, limit=limit)
 
-    def get_ads_aio(self, fields=None, params=None):
+    def get_ads_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over Ad's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.Ad, fields, params)
+        return self.iterate_edge_aio(baseobjects.Ad, fields, params, limit=limit)
 
-    def get_ad_conversion_pixels_aio(self, fields=None, params=None):
+    def get_ad_conversion_pixels_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over AdConversionPixels associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.AdConversionPixel, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdConversionPixel, fields, params, limit=limit)
 
-    def get_ad_creatives_aio(self, fields=None, params=None):
+    def get_ad_creatives_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdCreative's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdCreative, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdCreative, fields, params, limit=limit)
 
-    def get_ad_images_aio(self, fields=None, params=None):
+    def get_ad_images_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdImage's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdImage, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdImage, fields, params, limit=limit)
 
-    def get_insights_aio(self, fields=None, params=None, async=False):
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
         if async:
             return self.iterate_edge_async_aio(
                 Insights,
@@ -512,78 +519,78 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
             include_summary=False,
         )
 
-    def get_broad_category_targeting_aio(self, fields=None, params=None):
+    def get_broad_category_targeting_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over BroadCategoryTargeting's associated with this
         account.
         """
-        return self.iterate_edge_aio(baseobjects.BroadCategoryTargeting, fields, params)
+        return self.iterate_edge_aio(baseobjects.BroadCategoryTargeting, fields, params, limit=limit)
 
-    def get_connection_objects_aio(self, fields=None, params=None):
+    def get_connection_objects_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over ConnectionObject's associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.ConnectionObject, fields, params)
+        return self.iterate_edge_aio(baseobjects.ConnectionObject, fields, params, limit=limit)
 
-    def get_custom_audiences_aio(self, fields=None, params=None):
+    def get_custom_audiences_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over CustomAudience's associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.CustomAudience, fields, params)
+        return self.iterate_edge_aio(baseobjects.CustomAudience, fields, params, limit=limit)
 
-    def get_partner_categories_aio(self, fields=None, params=None):
+    def get_partner_categories_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over PartnerCategory's associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.PartnerCategory, fields, params)
+        return self.iterate_edge_aio(baseobjects.PartnerCategory, fields, params, limit=limit)
 
-    def get_rate_cards_aio(self, fields=None, params=None):
+    def get_rate_cards_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over RateCard's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.RateCard, fields, params)
+        return self.iterate_edge_aio(baseobjects.RateCard, fields, params, limit=limit)
 
-    def get_reach_estimate_aio(self, fields=None, params=None):
+    def get_reach_estimate_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over ReachEstimate's associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.ReachEstimate, fields, params)
+        return self.iterate_edge_aio(baseobjects.ReachEstimate, fields, params, limit=limit)
 
-    def get_transactions_aio(self, fields=None, params=None):
+    def get_transactions_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over Transaction's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.Transaction, fields, params)
+        return self.iterate_edge_aio(baseobjects.Transaction, fields, params, limit=limit)
 
-    def get_ad_preview_aio(self, fields=None, params=None):
+    def get_ad_preview_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over previews generated under this account."""
-        return self.iterate_edge_aio(baseobjects.GeneratePreview, fields, params)
+        return self.iterate_edge_aio(baseobjects.GeneratePreview, fields, params, limit=limit)
 
-    def get_ad_labels_aio(self, fields=None, params=None):
+    def get_ad_labels_aio(self, fields=None, params=None, limit=1000):
         """
         Returns all the ad labels associated with the ad account
         """
-        return self.iterate_edge_aio(baseobjects.AdLabel, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdLabel, fields, params, limit=limit)
 
-    def get_ad_creatives_by_labels_aio(self, fields=None, params=None):
+    def get_ad_creatives_by_labels_aio(self, fields=None, params=None, limit=1000):
         """
         Returns the ad creatives associated with the ad AdLabel
         """
-        return self.iterate_edge_aio(baseobjects.AdCreativesByLabels, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdCreativesByLabels, fields, params, limit=limit)
 
-    def get_ads_by_labels_aio(self, fields=None, params=None):
+    def get_ads_by_labels_aio(self, fields=None, params=None, limit=1000):
         """
         Returns the ad Groups associated with the ad AdLabel
         """
-        return self.iterate_edge_aio(baseobjects.AdsByLabels, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdsByLabels, fields, params, limit=limit)
 
-    def get_adsets_by_labels_aio(self, fields=None, params=None):
+    def get_adsets_by_labels_aio(self, fields=None, params=None, limit=1000):
         """
         Returns the ad sets associated with the ad AdLabel
         """
-        return self.iterate_edge_aio(baseobjects.AdSetsByLabels, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdSetsByLabels, fields, params, limit=limit)
 
-    def get_campaigns_by_labels_aio(self, fields=None, params=None):
+    def get_campaigns_by_labels_aio(self, fields=None, params=None, limit=1000):
         """
         Returns the ad campaigns associated with the ad AdLabel
         """
-        return self.iterate_edge_aio(baseobjects.CampaignsByLabels, fields, params)
+        return self.iterate_edge_aio(baseobjects.CampaignsByLabels, fields, params, limit=limit)
 
     def get_minimum_budgets_aio(self, fields=None, params=None, limit=1000):
         """
@@ -592,17 +599,17 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         return self.iterate_edge_aio(baseobjects.MinimumBudget, fields, params,
                                      limit=limit)
 
-    def get_ad_place_page_sets_aio(self, fields=None, params=None):
+    def get_ad_place_page_sets_aio(self, fields=None, params=None, limit=1000):
         """
         Returns the ad place page sets associated with the AdAccount
         """
-        return self.iterate_edge_aio(baseobjects.AdPlacePageSet, fields, params)
+        return self.iterate_edge_aio(baseobjects.AdPlacePageSet, fields, params, limit=limit)
 
-    def get_custom_conversions_aio(self, fields=None, params=None):
+    def get_custom_conversions_aio(self, fields=None, params=None, limit=1000):
         """
         Returns the custom conversions associated with the AdAccount
         """
-        return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params)
+        return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params, limit=limit)
 
 
 class AdAccountGroup(AbstractCrudAioObject, baseobjects.AdAccountGroup):
@@ -728,7 +735,7 @@ class Insights(AbstractCrudAioObject, baseobjects.Insights):
 
 class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
-    def get_result(self, params=None):
+    def get_result(self, params=None, limit=1000):
         """
         Gets the final result from an async job
         Accepts params such as limit
@@ -737,4 +744,5 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
             self.target_objects_class,
             params=params,
             include_summary=False,
+            limit=limit
         )
