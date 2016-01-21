@@ -746,3 +746,8 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
             include_summary=False,
             limit=limit
         )
+
+    def __nonzero__(self):
+        if self.Field.async_percent_completion not in self._data:
+            self.remote_read()
+        return self[self.Field.async_percent_completion] == 100
