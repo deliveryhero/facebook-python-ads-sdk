@@ -369,6 +369,17 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
             self.last_error_type = err_type
 
 
+class EdgeLessIterator(AioEdgeIterator):
+    def __init__(self, source_object,
+                 fields=None, params=None, include_summary=True,
+                 limit=1000):
+        super(EdgeLessIterator, self).__init__(
+                source_object, type(source_object), fields=fields,
+                params=params, include_summary=include_summary,
+                limit=limit)
+        self._path = (source_object.get_endpoint(),)
+
+
 class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
     """
     Extends AbstractCrudObject and implements async iter_edge operation.
@@ -666,6 +677,60 @@ class AdSet(AbstractCrudAioObject, baseobjects.AdSet):
             params,
             include_summary=False,
         )
+
+
+class TargetingSearch(AbstractCrudAioObject, baseobjects.TargetingSearch):
+
+    # TODO: replace this hack with a paged iterator abstract base
+    class Field(object):
+        id = 'id'
+
+    class DemographicSearchClasses(object):
+        demographics = 'demographics'
+        ethnic_affinity = 'ethnic_affinity'
+        family_statuses = 'family_statuses'
+        generation = 'generation'
+        home_ownership = 'home_ownership'
+        home_type = 'home_type'
+        home_value = 'home_value'
+        household_composition = 'household_composition'
+        income = 'income'
+        industries = 'industries'
+        life_events = 'life_events'
+        markets = 'markets'
+        moms = 'moms'
+        net_worth = 'net_worth'
+        office_type = 'office_type'
+        politics = 'politics'
+
+    class TargetingSearchTypes(object):
+        country = 'adcountry'
+        education = 'adeducationschool'
+        employer = 'adworkemployer'
+        geolocation = 'adgeolocation'
+        geometadata = 'adgeolocationmeta'
+        interest = 'adinterest'
+        interest_suggestion = 'adinterestsuggestion'
+        interest_validate = 'adinterestvalid'
+        keyword = 'adkeyword'
+        locale = 'adlocale'
+        major = 'adeducationmajor'
+        position = 'adworkposition'
+        radius_suggestion = 'adradiussuggestion'
+        targeting_category = 'adtargetingcategory'
+        zipcode = 'adzipcode'
+
+    @classmethod
+    def get_endpoint(cls):
+        return 'search'
+
+    @classmethod
+    def get_all_countries(cls):
+        ts = cls('no')
+        country_iter = EdgeLessIterator(
+                ts, params={'type': ts.TargetingSearchTypes.country}, limit=1000)
+        country_iter.submit_next_page_aio()
+        return [x for x in country_iter]
 
 
 class Ad(AbstractCrudAioObject, baseobjects.Ad):
