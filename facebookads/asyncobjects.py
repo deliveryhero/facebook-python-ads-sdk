@@ -192,6 +192,8 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         """
         self._request_failed = False
         if not self._future:
+            if self._finished_iteration:
+                return self
             raise FacebookUnavailablePropertyException("first submit new async call")
 
         if self._future.done():
@@ -380,34 +382,70 @@ class EdgeLessIterator(AioEdgeIterator):
         self._path = (source_object.get_endpoint(),)
 
 
+class ByIdsIterator(AioEdgeIterator):
+    def __init__(self, target_object_class, ids, fields=None, params=None,
+                 include_summary=True, limit=50):
+        super(ByIdsIterator, self).__init__(
+                target_object_class(str(ids[0])), target_object_class, fields=fields,
+                params=params, include_summary=include_summary,
+                limit=limit)
+        self._path = ['/']
+        self.params["ids"] = ','.join(map(str, ids))
+
+    def build_objects_from_response(self, response):
+        if 'data' in response and isinstance(response['data'], list):
+            new_cnt = len(response['data'])
+            self._queue += response['data']
+
+            if new_cnt <= 0:
+                # API may return paging.next even for the last page
+                self._finished_iteration = True
+        else:
+            self._finished_iteration = True
+            data = response['data'] if 'data' in response else response
+            if isinstance(data, dict):
+                for key, val in data.items():
+                    self._queue.append((key, val))
+            else:
+                self._queue.append(data)
+            new_cnt = 1
+        self._response = None
+
+        return new_cnt
+
+
 class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
     """
     Extends AbstractCrudObject and implements async iter_edge operation.
     """
 
     @classmethod
-    def get_by_ids(cls, ids, params=None, fields=None, api=None):
+    def get_by_ids(cls, ids, params=None, fields=None, api=None, limit=50):
         """Get objects by id list
         :type ids: list
         :type params: didct
         :type fields: list
         :type api: FacebookAdsAsyncApi
+        :param limit: how big should slices be
         :rtype: list[AbstractCrudAioObject]
         """
         api = api or FacebookAdsAsyncApi.get_default_api()
         params = dict(params or {})
         cls._assign_fields_to_params(fields, params)
-        params['ids'] = ','.join(map(str, ids))
-        response = api.call(
-            'GET',
-            ['/'],
-            params=params,
-        )
+        cnt = 0
+        while cnt < len(ids):
+            params_tmp = params.copy()
+            iter_edge = ByIdsIterator(cls, ids[cnt:cnt+limit], fields=fields,
+                                      params=params_tmp, limit=limit)
+            iter_edge.submit_next_page_aio()
+            cnt += limit
+
         result = []
-        for fbid, data in response.json().items():
-            obj = cls(fbid, api=api)
-            obj._set_data(data)
-            result.append(obj)
+        for response in api.get_async_results(cls):
+            for fbid, data in response.get_all_results():
+                obj = cls(fbid, api=api)
+                obj._set_data(data)
+                result.append(obj)
         return result
 
     # Getters
@@ -728,7 +766,7 @@ class TargetingSearch(AbstractCrudAioObject, baseobjects.TargetingSearch):
     def get_all_countries(cls):
         ts = cls('no')
         country_iter = EdgeLessIterator(
-                ts, params={'type': ts.TargetingSearchTypes.country}, limit=1000)
+                ts, params={'type': ts.TargetingSearchTypes.country})
         country_iter.submit_next_page_aio()
         return [x for x in country_iter]
 

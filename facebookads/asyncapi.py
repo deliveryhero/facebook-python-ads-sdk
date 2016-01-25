@@ -5,7 +5,6 @@ import time
 import logging
 import concurrent.futures
 import threading
-from six.moves import _thread as thread
 
 from facebookads.exceptions import FacebookCallFailedError, FacebookBadObjectError
 from facebookads.api import FacebookSession, FacebookResponse, \
@@ -14,6 +13,7 @@ from facebookads.api import FacebookSession, FacebookResponse, \
 __author__ = 'pasha-r'
 
 logger = logging.getLogger("facebookclient")
+#logging.getLogger('requests.packages.urllib3.connectionpool').setLevel(30)
 
 
 class FacebookAsyncResponse(FacebookResponse):
@@ -125,6 +125,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
             time.sleep(delay_next_call_for)
 
         # Get request response and encapsulate it in a FacebookResponse
+        logger.debug("Method {}, url: {}, params: {}".format(method, path, params))
         try:
             if method in ('GET', 'DELETE'):
                 response = self._session.requests.request(
@@ -242,6 +243,45 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                 if edge_iter._request_failed:
                     # request failed unrecoverably
                     yield edge_iter
+                else:
+                    edge_iter.submit_next_page_aio()
+
+                    # some more loading needs to be done
+                    self.put_in_futures(edge_iter)
+
+                    if cnt >= len(self._futures):
+                        cnt = 0
+                        time.sleep(0.3)
+
+    def get_async_results(self, target_objects_class):
+        """
+        :rtype: list[facebookads.asyncobjects.AioEdgeIterator]
+        """
+        time.sleep(0.01)
+        cnt = 0
+        while True:
+            cnt += 1
+            edge_iter = self.pop_one_from_futures()
+            if edge_iter is None:
+                break
+            elif isinstance(edge_iter, six.string_types) and edge_iter == "next":
+                continue
+
+            edge_iter.extract_results()
+
+            if edge_iter._page_ready and edge_iter._finished_iteration:
+                # loaded all the data
+                if edge_iter._target_objects_class == target_objects_class:
+                    yield edge_iter
+                else:
+                    self.put_in_futures(edge_iter)
+            else:
+                if edge_iter._request_failed:
+                    # request failed unrecoverably
+                    if edge_iter._target_objects_class == target_objects_class:
+                        yield edge_iter
+                    else:
+                        self.put_in_futures(edge_iter)
                 else:
                     edge_iter.submit_next_page_aio()
 
