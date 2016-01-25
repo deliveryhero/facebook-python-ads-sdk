@@ -429,6 +429,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         :param limit: how big should slices be
         :rtype: list[AbstractCrudAioObject]
         """
+        ids = list(ids)
         api = api or FacebookAdsAsyncApi.get_default_api()
         params = dict(params or {})
         cls._assign_fields_to_params(fields, params)
