@@ -274,7 +274,9 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                 if edge_iter._target_objects_class == target_objects_class:
                     yield edge_iter
                 else:
-                    self.put_in_futures(edge_iter)
+                    raise FacebookBadObjectError(
+                            "got object of type {}, when {} expected".format(
+                                    target_objects_class, edge_iter._target_objects_class))
             else:
                 if edge_iter._request_failed:
                     # request failed unrecoverably
