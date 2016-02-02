@@ -47,6 +47,8 @@ from facebookads.video_uploader import (
     VideoEncodingStatusChecker,
 )
 
+import requests
+
 import hashlib
 import collections
 import json
@@ -2512,20 +2514,27 @@ class TargetingSearch(AbstractObject):
 
         ret_val = []
         if response:
-            keys = response['data']
-            # The response object can be either a dictionary of dictionaries
-            # or a dictionary of lists.
-            if isinstance(keys, list):
-                for item in keys:
-                    search_obj = TargetingSearch()
-                    search_obj.update(item)
-                    ret_val.append(search_obj)
-            elif isinstance(keys, dict):
-                for item in keys:
-                    search_obj = TargetingSearch()
-                    search_obj.update(keys[item])
-                    if keys[item]:
+            while True:
+                keys = response['data']
+                # The response object can be either a dictionary of dictionaries
+                # or a dictionary of lists.
+                if isinstance(keys, list):
+                    for item in keys:
+                        search_obj = TargetingSearch()
+                        search_obj.update(item)
                         ret_val.append(search_obj)
+                elif isinstance(keys, dict):
+                    for item in keys:
+                        search_obj = TargetingSearch()
+                        search_obj.update(keys[item])
+                        if keys[item]:
+                            ret_val.append(search_obj)
+
+                if 'paging' in response and 'next' in response['paging']:
+                    response = requests.get(response['paging']['next']).json()
+                else:
+                    break
+
         return ret_val
 
 
