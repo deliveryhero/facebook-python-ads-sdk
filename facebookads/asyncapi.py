@@ -246,7 +246,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
             elif isinstance(edge_iter, six.string_types) and edge_iter == "next":
                 continue
 
-            edge_iter.extract_results()
+            edge_iter = edge_iter.extract_results()
 
             if edge_iter._page_ready and edge_iter._finished_iteration:
                 # loaded all the data
@@ -261,9 +261,9 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                     # some more loading needs to be done
                     self.put_in_futures(edge_iter)
 
-                    if cnt >= len(self._futures):
-                        cnt = 0
-                        time.sleep(0.3)
+            if cnt >= len(self._futures):
+                cnt = 0
+                time.sleep(0.3)
 
     def get_async_results(self, target_objects_class):
         """

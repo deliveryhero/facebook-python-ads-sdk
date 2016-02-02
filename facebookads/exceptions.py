@@ -158,3 +158,7 @@ class FacebookBadObjectError(FacebookError):
 class FacebookUnavailablePropertyException(FacebookError):
     """Raised when an object's property or method is not available."""
     pass
+
+
+class JobFailedException(FacebookError):
+    pass
