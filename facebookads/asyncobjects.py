@@ -3,8 +3,8 @@ import random
 import logging
 import facebookads.objects as baseobjects
 from facebookads.asyncapi import FacebookAdsAsyncApi
-from facebookads.exceptions import FacebookRequestError,\
-    FacebookUnavailablePropertyException
+from facebookads.exceptions import (FacebookRequestError,
+    FacebookUnavailablePropertyException, JobFailedException)
 from facebookads.utils.fberrcodes import FacebookErrorCodes
 
 try:
@@ -25,7 +25,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
     Examples:
         >>> acc = AdAccount('account_id')
         >>> ad_names = []
-        >>> for row in acc.get_ads(fields=[Ad.Field.name]):
+        >>> for row in acc.get_ads_aio(fields=[Ad.Field.name]):
         >>>     ad_names.append(row["name"])
         >>> ad_names
     """
@@ -40,7 +40,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         Args:
             source_object: An AbstractObject instance from which to inspect an
                 edge. This object should have an id.
-            target_objects_class: Objects traverersed over will be initialized
+            target_objects_class: Objects traversed over will be initialized
                 with this AbstractObject class.
             fields (optional): A list of fields of target_objects_class to
                 automatically read in.
@@ -50,6 +50,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         """
         self.limit = 1000 if limit is None else limit
         self.starting_limit = 1000 if limit is None else limit
+
         if params is None:
             params = {"limit": self.limit}
         elif not params or "limit" not in params:
@@ -138,6 +139,8 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
 
     def read_next_page_aio(self, response):
         """
+        Parses and returns the data in response.
+        Gets the url of the next page in response and sets it as self._path attribute.
 
         :type response: facebookads.asyncapi.FacebookAsyncResponse
         :return:
@@ -168,6 +171,10 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         return self.build_objects_from_response(jresp)
 
     def build_objects_from_response(self, response):
+        """
+        Returns number of iterms in response.
+        Gets response data and adds it to self._queue.
+        """
         if 'data' in response and isinstance(response['data'], list):
             new_cnt = len(response['data'])
             self._queue += response['data']
@@ -188,9 +195,14 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
 
     def extract_results(self):
         """
+        If future is done, removes it from the futures list, dict and iterator itself.
+        Then, if future finished successfully,
+
         :return: FbFutureHolder
         """
         self._request_failed = False
+
+        # If no future in iterator and the iterator is finished, returns the iterator itself.
         if not self._future:
             if self._finished_iteration:
                 return self
@@ -220,9 +232,9 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
                 self._request_failed = True
                 self.delay_next_call_for = 0
                 logger.warn("request {} was cancelled, endpoint: {}, params: {}".format(
-                    str(self._future), str(self._path), self.params))
+                        str(self._future), str(self._path), self.params))
                 self.last_error = Exception("request {} was cancelled, endpoint: {}, params: {}".format(
-                    str(self._future), str(self._path), self.params))
+                        str(self._future), str(self._path), self.params))
                 self._source_object.get_api_assured().remove_from_futures(self)
                 del self._future
                 self._future = None
@@ -250,18 +262,29 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         self._future = None
 
     def on_success(self, response):
+        """
+        Increments success streak and success count, assigns the next page of response as self._path,
+        sets parameter ._page_ready as True.
+
+        If success streak >= 10 and self.limit < starting limit, changes the limit of facebook result data.
+        """
         self._response = response
         """:type: facebookads.asyncapi.FacebookAsyncResponse"""
         self.success_streak += 1
         self.success_cnt += 1
         self.read_next_page_aio(self._response)
         self._page_ready = True
+
         if not self._finished_iteration:
             if self.success_streak >= 10 and self.last_error_type != "too much data error" \
                     and self.limit < self.starting_limit:
                 self.change_the_next_page_limit(self.starting_limit, 2)
 
     def on_error(self, response):
+        """
+        If request is failed, submits next page, otherwise
+        finishes iterations and sets the number of success streaks as 0.
+        """
         self.is_exception_fatal(response)
         if not self._request_failed:
             self.submit_next_page_aio()
@@ -272,6 +295,10 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
     # errors handling
 
     def is_exception_fatal(self, resp):
+        """
+        If it is unfatal error, tries to recover.
+        If it is fatal error, sets _request_failed = True, logs it and sets _last_error = error.
+        """
         exc = resp.error()
         if isinstance(exc, FacebookRequestError):
             if exc._api_error_code == FacebookErrorCodes.temporary:
@@ -295,7 +322,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         self.set_last_error(exception_type)
         self.last_error = exc
         self._request_failed = True
-        logger.error("While loading url: {}, method GET with params: {}. "
+        logger.error("Fatal facebook error while loading url: {}, method GET with params: {}. "
                      "Caught an error: {}".format(
             str(self._path), str(self.params), str(exc)))
 
@@ -464,7 +491,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
     def iterate_edge_aio(self, target_objects_class, fields=None, params=None,
                          include_summary=True, limit=1000):
         """
-        Returns EdgeIterator with argument self as source_object and
+        Creates, sends it to the futures queue and returns EdgeIterator with argument self as source_object and
         the rest as given __init__ arguments.
 
         Note: list(iterate_edge_aio(...)) can prefetch all the objects.
@@ -478,7 +505,9 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
             include_summary=include_summary,
             limit=limit
         )
+
         iterator.submit_next_page_aio()
+
         return iterator
 
     def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None):
@@ -648,6 +677,16 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params, limit=limit)
 
     def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+        """
+        If async is False, returns EdgeIterator.
+
+        If async is True, creates a job and job iterator for it and
+        returns the job iterator (AsyncAioJobIterator class, subclass of EdgeIterator).
+
+        Regardless the async parameter, it puts the iterator to the queue so that
+        the results of execution are later available  through
+        FacebookAdsAsyncApi.get_default_api().get_all_async_results() call.
+        """
         if async:
             return self.iterate_edge_async_aio(
                 Insights,
