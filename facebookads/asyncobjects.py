@@ -470,6 +470,9 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
 
         result = []
         for response in api.get_async_results(cls):
+            if response._request_failed:
+                raise response.last_error()
+
             for fbid, data in response.get_all_results():
                 obj = cls(fbid, api=api)
                 obj._set_data(data)
