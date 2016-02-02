@@ -536,11 +536,24 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
 
         # AsyncAioJob stores the real iterator
         # for when the result is ready to be queried
-        result = AsyncAioJob(target_objects_class)
+        job = AsyncAioJob(target_objects_class)
+        result = AsyncAioJobIterator(
+            job,
+            self,
+            target_objects_class,
+            fields=fields,
+            params=params,
+        )
+
+        result.job_started = time.time()
+        result.attempt += 1
+        result.failed_attemps = 0
 
         if 'report_run_id' in response:
             response['id'] = response['report_run_id']
-        result._set_data(response)
+
+        job._set_data(response)
+        self.get_api_assured().put_in_futures(result)
         return result
 
 
@@ -981,11 +994,16 @@ class Insights(AbstractCrudAioObject, baseobjects.Insights):
 
 class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
+    def __init__(self, *args, **kwargs):
+        super(AsyncAioJob, self).__init__(*args, **kwargs)
+
+
     def get_result(self, params=None, limit=1000):
         """
         Gets the final result from an async job
         Accepts params such as limit
         """
+
         return self.iterate_edge_aio(
             self.target_objects_class,
             params=params,
@@ -997,3 +1015,191 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
         if self.Field.async_percent_completion not in self._data:
             self.remote_read()
         return self[self.Field.async_percent_completion] == 100
+
+    def get_async_status(self):
+        return self[self.job.Field.async_status]
+
+    def get_async_percent_completion(self):
+        return int(self[self.Field.async_percent_completion])
+
+    def is_failed(self) -> bool:
+        if self.job.get_async_status() == 'Job Failed':
+            return True
+
+        return False
+
+    def get_report_run_id(self):
+        return self._data.get('report_run_id')
+
+
+class AsyncAioJobIterator(AioEdgeIterator):
+
+    def __init__(self, job, source_object, target_objects_class,
+                 fields=None, params=None, include_summary=True,
+                 limit=1000, stage='async_get_job'):
+
+        super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
+                                                  fields=fields, params=params,
+                                                  include_summary=include_summary, limit=limit)
+        self.job = job
+        self.failed_attempt = 0
+        self.attempt = 0
+        self.request_issued = None
+        self.job_id = None
+        self.stage = None
+        self.stage = stage
+        self.job_started = time.time()
+
+    def submit_next_page_aio(self):
+        pass
+
+    def get_all_results(self):
+        return list(self.job.get_result())
+
+    def extract_results(self):
+        """
+        Returns self if the results are not ready, otherwise returns iterator by results
+        of class AioEdgeIterator.
+        """
+        self.job.remote_read()
+
+        if self.job.get_async_percent_completion() == 100 and self.job.get_async_status() == 'Job Completed':
+            results_iterator = self.job.get_result()
+            return results_iterator
+
+        return self
+
+    def check_job_results(self) -> int:
+        """
+        Returns integer, specifying success or fault.
+        """
+        self.job.remote_read()
+        async_status = self.job.get_async_status()
+        job_id = self[self.Field.id]
+        res = 'todo'
+
+        if async_status == 'Job Completed':
+            return 2
+        elif async_status == 'Job Failed':
+            if self.failed_attempt > 3:
+                logger.warn("job id {} failed for {}, report params: {}, response: "
+                            "'{}'".format(job_id, self, self.params, res))
+
+                if self.attempt > 4:
+                    raise Exception("job id {} failed for {}, "
+                        "report params: {}, response: '{}'".format(
+                            self.job_id, self, self.params, res))
+                return 1
+            else:
+                time.sleep(0.5 + 1 * self.failed_attempt)
+                self.failed_attempt += 1
+
+        else:
+            if time.time() - self.job_started > 900:
+                logger.warn("job id {} stuck for 15 minutes for {}, report "
+                            "params: {}, response: '{}'".format(self.job_id, self, self.params, res))
+
+                if self.attempt > 5:
+                    raise Exception("job id {} stuck for 15 minutes for {}, "
+                        "report params: {}, response: '{}'".format(
+                            self.job_id, self, self.params, res))
+                return 1
+
+        if self.attempt > 8:
+            raise Exception("job id {} failed for {}, reason unknown, response: {}, "
+                     "report params: {}".format(self.job_id, self, res, self.params))
+
+            return 1
+        return 0
+
+    def is_bad_response(self, jobcheck: bool=False) -> bool:
+        """
+        Returns True if response is bad, otherwise returns False.
+        """
+        if self.job.get_async_status() == 'Job Failed':
+            logger.warn('got error for job {}, iterator {}'.format(self.job, self))
+
+            if self.attempt > 5:
+                raise JobFailedException('Number of attempt of job {} more than 5, namely {}'.format(
+                    self, self.attempt
+                ))
+            return True
+
+        elif not self.get_all_results():
+            logger.warn('got bad response {} of type {} for {}'.format(
+                self.get_all_results(), type(self.get_all_results()), self))
+
+            if self.attempt > 5:
+                raise JobFailedException('got bad response {} of type {} for {}'.format(
+                    self.get_all_results(), type(self.get_all_results()), self))
+
+            return True
+
+        elif jobcheck and (not self.get_all_results() or
+                           (not self.job.get_report_run_id() and
+                            not self.job.get_async_status())):
+            logger.warn('got no async_status and no report_run_id in '
+                        '{} for {}'.format(self.job, self))
+
+            if self.attempt > 8:
+                raise Exception('got no async_status and no '
+                                'report_run_id in {} for {}'.format(self.job, self))
+
+            return True
+        return False
+
+    def check_results(self) -> ([{}], bool):
+        """
+        :type response: facebookadspy.response.AdsAPIResponse
+        :rtype: list[dict], bool
+
+        Returns (data, is_done)
+        """
+        self.request_issued = None
+
+        if self.stage == 'async_get_job':
+            if self.is_bad_response(True):
+                return None, False
+
+            check_result = self.check_job_results()
+            if not check_result:
+                return self.get_all_results(), False
+            elif check_result == 1:
+                self.stage = 'async_get_job'
+                return self.get_all_results(), False
+
+            self.stage = 'async_check_job'
+            return self.get_all_results(), False
+
+        elif self.stage == 'async_get_report':
+            if self.is_bad_response():
+                self.failed_attempt += 1
+
+                if self.failed_attempt > 2:
+                    self.stage = 'async_get_job'
+                else:
+                    time.sleep(1)
+
+                return None, False
+            return self.get_all_results(), True
+
+        else:
+            raise Exception("check_results got unknown stage {} for {}".format(self.stage, self))
+
+    def process_next_stage(self):
+        """
+        :rtype: concurrent.futures.Future
+        """
+        if self.request_issued:
+            raise Exception("get_request_future called before parsing previos request "
+                            "for {}".format(self))
+
+        if self.stage == 'async_check_job':
+            job = self.check_status()
+
+        elif self.stage == 'async_get_report':
+            job = self.get_result()
+            self.failed_attempt = 0
+
+        self.request_issued = time.time()
+        return job
