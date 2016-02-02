@@ -536,7 +536,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
 
         # AsyncAioJob stores the real iterator
         # for when the result is ready to be queried
-        job = AsyncAioJob(target_objects_class)
+        job = AsyncAioJob(target_objects_class, edge_params=params)
         result = AsyncAioJobIterator(
             job,
             self,
@@ -995,8 +995,8 @@ class Insights(AbstractCrudAioObject, baseobjects.Insights):
 class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
     def __init__(self, *args, **kwargs):
+        self.edge_params = kwargs.pop('edge_params', None)
         super(AsyncAioJob, self).__init__(*args, **kwargs)
-
 
     def get_result(self, params=None, limit=1000):
         """
