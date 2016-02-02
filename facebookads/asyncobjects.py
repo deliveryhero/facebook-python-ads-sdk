@@ -1017,7 +1017,7 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
         return self[self.Field.async_percent_completion] == 100
 
     def get_async_status(self):
-        return self[self.job.Field.async_status]
+        return self[self.Field.async_status]
 
     def get_async_percent_completion(self):
         return int(self[self.Field.async_percent_completion])
