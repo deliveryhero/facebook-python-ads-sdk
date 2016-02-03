@@ -525,6 +525,19 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
             params = dict(params)
         self.__class__._assign_fields_to_params(fields, params)
 
+        result = AsyncAioJobIterator(
+            job,
+            self,
+            target_objects_class,
+            fields=fields,
+            params=params,
+        )
+        # TODO: AsyncAioJobIterator.launch_job must:
+        # 0. create launch_job method
+        # 1. call POST to create job
+        # 2. create and store in attributes AsyncAioJob
+        # 3. put self in futures
+
         # To force an async response from an edge, do a POST instead of GET.
         # The response comes in the format of an AsyncAioJob which
         # indicates the progress of the async request.
@@ -537,17 +550,10 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         # AsyncAioJob stores the real iterator
         # for when the result is ready to be queried
         job = AsyncAioJob(target_objects_class, edge_params=params)
-        result = AsyncAioJobIterator(
-            job,
-            self,
-            target_objects_class,
-            fields=fields,
-            params=params,
-        )
 
         result.job_started = time.time()
         result.attempt += 1
-        result.failed_attemps = 0
+        result.failed_attempt = 0
 
         if 'report_run_id' in response:
             response['id'] = response['report_run_id']
@@ -1076,134 +1082,53 @@ class AsyncAioJobIterator(AioEdgeIterator):
         Returns self if the results are not ready, otherwise returns iterator by results
         of class AioEdgeIterator.
         """
+
         self.job.remote_read()
+        async_status = self.job.get_async_status()
+        job_id = self.job[self.job.Field.id]
+        res = str(self)
 
         print('completion', self.job.get_async_percent_completion())
         print('status', self.job.get_async_status())
 
-        if self.job.get_async_percent_completion() == 100 and self.job.get_async_status() == 'Job Completed':
-            results_iterator = self.job.get_result()
-            return results_iterator
-
-        return self
-
-    def check_job_results(self):
-        """
-        Returns integer, specifying success or fault.
-
-        :rtype int
-        """
-        self.job.remote_read()
-        async_status = self.job.get_async_status()
-        job_id = self[self.Field.id]
-        res = 'todo'
-
         if async_status == 'Job Completed':
-            return 2
+            if percent_completion == 100:
+                # return new iterator over job's results
+                results_iterator = self.job.get_result()
+                return results_iterator
+
+            elif self.attempt > 8:
+                raise JobFailedException("job id {} failed for {}, reason unknown, response: {}, "
+                         "report params: {}".format(self.job_id, self, res, self.params))
+            else:
+                # create new job and wait for it to complete
+                return 1
         elif async_status == 'Job Failed':
             if self.failed_attempt > 3:
                 logger.warn("job id {} failed for {}, report params: {}, response: "
                             "'{}'".format(job_id, self, self.params, res))
 
-                if self.attempt > 4:
-                    raise Exception("job id {} failed for {}, "
-                        "report params: {}, response: '{}'".format(
-                            self.job_id, self, self.params, res))
-                return 1
+                raise JobFailedException("job id {} failed for {}, "
+                    "report params: {}, response: '{}'".format(
+                        self.job_id, self, self.params, res))
             else:
+                # job check says that it's failed but really it is be running
+                # we just need to recheck it's status in several seconds
                 time.sleep(0.5 + 1 * self.failed_attempt)
                 self.failed_attempt += 1
 
         else:
+            # TODO: move timeout value to object attributes
             if time.time() - self.job_started > 900:
                 logger.warn("job id {} stuck for 15 minutes for {}, report "
                             "params: {}, response: '{}'".format(self.job_id, self, self.params, res))
 
                 if self.attempt > 5:
-                    raise Exception("job id {} stuck for 15 minutes for {}, "
+                    raise JobFailedException("job id {} stuck for 15 minutes for {}, "
                         "report params: {}, response: '{}'".format(
                             self.job_id, self, self.params, res))
+                # create new job and wait for it to complete
                 return 1
 
-        if self.attempt > 8:
-            raise Exception("job id {} failed for {}, reason unknown, response: {}, "
-                     "report params: {}".format(self.job_id, self, res, self.params))
-
-            return 1
-        return 0
-
-    def is_bad_response(self, jobcheck=False):
-        """
-        Returns True if response is bad, otherwise returns False.
-
-        :param jobcheck bool
-        :rtype bool
-        """
-        if self.job.get_async_status() == 'Job Failed':
-            logger.warn('got error for job {}, iterator {}'.format(self.job, self))
-
-            if self.attempt > 5:
-                raise JobFailedException('Number of attempt of job {} more than 5, namely {}'.format(
-                    self, self.attempt
-                ))
-            return True
-
-        elif not self.get_all_results():
-            logger.warn('got bad response {} of type {} for {}'.format(
-                self.get_all_results(), type(self.get_all_results()), self))
-
-            if self.attempt > 5:
-                raise JobFailedException('got bad response {} of type {} for {}'.format(
-                    self.get_all_results(), type(self.get_all_results()), self))
-
-            return True
-
-        elif jobcheck and (not self.get_all_results() or
-                           (not self.job.get_report_run_id() and
-                            not self.job.get_async_status())):
-            logger.warn('got no async_status and no report_run_id in '
-                        '{} for {}'.format(self.job, self))
-
-            if self.attempt > 8:
-                raise Exception('got no async_status and no '
-                                'report_run_id in {} for {}'.format(self.job, self))
-
-            return True
-        return False
-
-    def check_results(self):
-        """
-        :rtype: list[dict], bool
-
-        Returns (data, is_done)
-        """
-        self.request_issued = None
-
-        if self.stage == 'async_get_job':
-            if self.is_bad_response(True):
-                return None, False
-
-            check_result = self.check_job_results()
-            if not check_result:
-                return self.get_all_results(), False
-            elif check_result == 1:
-                self.stage = 'async_get_job'
-                return self.get_all_results(), False
-
-            self.stage = 'async_check_job'
-            return self.get_all_results(), False
-
-        elif self.stage == 'async_get_report':
-            if self.is_bad_response():
-                self.failed_attempt += 1
-
-                if self.failed_attempt > 2:
-                    self.stage = 'async_get_job'
-                else:
-                    time.sleep(1)
-
-                return None, False
-            return self.get_all_results(), True
-
-        else:
-            raise Exception("check_results got unknown stage {} for {}".format(self.stage, self))
+        # we need to return self into thread pool and wait for job completion
+        return self
