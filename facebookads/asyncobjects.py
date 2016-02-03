@@ -1052,10 +1052,6 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
         :return: None
         """
-        # AsyncAioJob stores the real iterator
-        # for when the result is ready to be queried
-        self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params)
-
         # To force an async response from an edge, do a POST instead of GET.
         # The response comes in the format of an AsyncAioJob which
         # indicates the progress of the async request.
@@ -1072,6 +1068,9 @@ class AsyncAioJobIterator(AioEdgeIterator):
         if 'report_run_id' in response:
             response['id'] = response['report_run_id']
 
+        # AsyncAioJob stores the real iterator
+        # for when the result is ready to be queried
+        self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params)
         self.job._set_data(response)
         self._source_object.get_api_assured().put_in_futures(self)
 
