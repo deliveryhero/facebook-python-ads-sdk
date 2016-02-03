@@ -526,40 +526,13 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         self.__class__._assign_fields_to_params(fields, params)
 
         result = AsyncAioJobIterator(
-            job,
             self,
             target_objects_class,
             fields=fields,
             params=params,
         )
-        # TODO: AsyncAioJobIterator.launch_job must:
-        # 0. create launch_job method
-        # 1. call POST to create job
-        # 2. create and store in attributes AsyncAioJob
-        # 3. put self in futures
 
-        # To force an async response from an edge, do a POST instead of GET.
-        # The response comes in the format of an AsyncAioJob which
-        # indicates the progress of the async request.
-        response = self.get_api_assured().call(
-            'POST',
-            (self.get_id_assured(), target_objects_class.get_endpoint()),
-            params=params,
-        ).json()
-
-        # AsyncAioJob stores the real iterator
-        # for when the result is ready to be queried
-        job = AsyncAioJob(target_objects_class, edge_params=params)
-
-        result.job_started = time.time()
-        result.attempt += 1
-        result.failed_attempt = 0
-
-        if 'report_run_id' in response:
-            response['id'] = response['report_run_id']
-
-        job._set_data(response)
-        self.get_api_assured().put_in_futures(result)
+        result.launch_job()
         return result
 
 
@@ -1054,15 +1027,14 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
 
 class AsyncAioJobIterator(AioEdgeIterator):
-
-    def __init__(self, job, source_object, target_objects_class,
+    def __init__(self, source_object, target_objects_class,
                  fields=None, params=None, include_summary=True,
-                 limit=1000, stage='async_get_job'):
+                 limit=1000, stage='async_get_job', timeout=900):
 
         super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
                                                   fields=fields, params=params,
                                                   include_summary=include_summary, limit=limit)
-        self.job = job
+        self.job = None
         self.failed_attempt = 0
         self.attempt = 0
         self.request_issued = None
@@ -1070,6 +1042,39 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.stage = None
         self.stage = stage
         self.job_started = time.time()
+        self.timeout = timeout
+
+    def launch_job(self):
+        """
+        1. Calls POST to create job
+        2. Creates and store in attributes AsyncAioJob
+        3. Puts self in futures
+
+        :return: None
+        """
+        # To force an async response from an edge, do a POST instead of GET.
+        # The response comes in the format of an AsyncAioJob which
+        # indicates the progress of the async request.
+        response = self.get_api_assured().call(
+            'POST',
+            (self.get_id_assured(), self.target_objects_class.get_endpoint()),
+            params=self.params,
+        ).json()
+
+        # AsyncAioJob stores the real iterator
+        # for when the result is ready to be queried
+        job = AsyncAioJob(self.target_objects_class, edge_params=self.params)
+
+        self.job = job
+        self.job_started = time.time()
+        self.attempt += 1
+        self.failed_attempt = 0
+
+        if 'report_run_id' in response:
+            response['id'] = response['report_run_id']
+
+        job._set_data(response)
+        self.get_api_assured().put_in_futures(self)
 
     def submit_next_page_aio(self):
         pass
@@ -1092,7 +1097,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         print('status', self.job.get_async_status())
 
         if async_status == 'Job Completed':
-            if percent_completion == 100:
+            if self.job.get_async_percent_completion() == 100:
                 # return new iterator over job's results
                 results_iterator = self.job.get_result()
                 return results_iterator
@@ -1102,7 +1107,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
                          "report params: {}".format(self.job_id, self, res, self.params))
             else:
                 # create new job and wait for it to complete
-                return 1
+                self.launch_job()
+
         elif async_status == 'Job Failed':
             if self.failed_attempt > 3:
                 logger.warn("job id {} failed for {}, report params: {}, response: "
@@ -1118,8 +1124,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 self.failed_attempt += 1
 
         else:
-            # TODO: move timeout value to object attributes
-            if time.time() - self.job_started > 900:
+            if time.time() - self.job_started > self.timeout:
                 logger.warn("job id {} stuck for 15 minutes for {}, report "
                             "params: {}, response: '{}'".format(self.job_id, self, self.params, res))
 
@@ -1128,7 +1133,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                         "report params: {}, response: '{}'".format(
                             self.job_id, self, self.params, res))
                 # create new job and wait for it to complete
-                return 1
+                self.launch_job()
 
         # we need to return self into thread pool and wait for job completion
         return self
