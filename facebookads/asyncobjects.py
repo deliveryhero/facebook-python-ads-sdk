@@ -471,7 +471,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         result = []
         for response in api.get_async_results(cls):
             if response._request_failed:
-                raise response.last_error()
+                raise response.last_error
 
             for fbid, data in response.get_all_results():
                 obj = cls(fbid, api=api)
@@ -1017,12 +1017,27 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
         return self[self.Field.async_percent_completion] == 100
 
     def get_async_status(self):
+        """
+        Returns async status, (Job Completed, Job Failed, Job Not Started, Job Started, Job Running)
+
+        :rtype: str
+        """
         return self[self.Field.async_status]
 
     def get_async_percent_completion(self):
+        """
+        Returns percent completion from 0 to 100
+
+        :rtype: int
+        """
         return int(self[self.Field.async_percent_completion])
 
-    def is_failed(self) -> bool:
+    def is_failed(self):
+        """
+        Returns True if job is failed, otherwise False.
+
+        :rtype bool
+        """
         if self.job.get_async_status() == 'Job Failed':
             return True
 
@@ -1063,15 +1078,20 @@ class AsyncAioJobIterator(AioEdgeIterator):
         """
         self.job.remote_read()
 
+        print('completion', self.job.get_async_percent_completion())
+        print('status', self.job.get_async_status())
+
         if self.job.get_async_percent_completion() == 100 and self.job.get_async_status() == 'Job Completed':
             results_iterator = self.job.get_result()
             return results_iterator
 
         return self
 
-    def check_job_results(self) -> int:
+    def check_job_results(self):
         """
         Returns integer, specifying success or fault.
+
+        :rtype int
         """
         self.job.remote_read()
         async_status = self.job.get_async_status()
@@ -1112,9 +1132,12 @@ class AsyncAioJobIterator(AioEdgeIterator):
             return 1
         return 0
 
-    def is_bad_response(self, jobcheck: bool=False) -> bool:
+    def is_bad_response(self, jobcheck=False):
         """
         Returns True if response is bad, otherwise returns False.
+
+        :param jobcheck bool
+        :rtype bool
         """
         if self.job.get_async_status() == 'Job Failed':
             logger.warn('got error for job {}, iterator {}'.format(self.job, self))
@@ -1148,9 +1171,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
             return True
         return False
 
-    def check_results(self) -> ([{}], bool):
+    def check_results(self):
         """
-        :type response: facebookadspy.response.AdsAPIResponse
         :rtype: list[dict], bool
 
         Returns (data, is_done)
@@ -1185,21 +1207,3 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
         else:
             raise Exception("check_results got unknown stage {} for {}".format(self.stage, self))
-
-    def process_next_stage(self):
-        """
-        :rtype: concurrent.futures.Future
-        """
-        if self.request_issued:
-            raise Exception("get_request_future called before parsing previos request "
-                            "for {}".format(self))
-
-        if self.stage == 'async_check_job':
-            job = self.check_status()
-
-        elif self.stage == 'async_get_report':
-            job = self.get_result()
-            self.failed_attempt = 0
-
-        self.request_issued = time.time()
-        return job
