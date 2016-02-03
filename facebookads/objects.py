@@ -2527,6 +2527,7 @@ class TargetingSearch(AbstractObject):
                     search_obj = TargetingSearch()
                     search_obj.update(keys[item])
                     if keys[item]:
+                        ret_val.append(search_obj)
 
         return ret_val
 
