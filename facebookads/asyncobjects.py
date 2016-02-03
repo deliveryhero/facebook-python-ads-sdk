@@ -1055,17 +1055,12 @@ class AsyncAioJobIterator(AioEdgeIterator):
         # To force an async response from an edge, do a POST instead of GET.
         # The response comes in the format of an AsyncAioJob which
         # indicates the progress of the async request.
-        response = self.get_api_assured().call(
+        response = self._source_object.get_api_assured().call(
             'POST',
-            (self.get_id_assured(), self.target_objects_class.get_endpoint()),
+            (self._source_object.get_id_assured(), self._target_objects_class.get_endpoint()),
             params=self.params,
         ).json()
 
-        # AsyncAioJob stores the real iterator
-        # for when the result is ready to be queried
-        job = AsyncAioJob(self.target_objects_class, edge_params=self.params)
-
-        self.job = job
         self.job_started = time.time()
         self.attempt += 1
         self.failed_attempt = 0
@@ -1073,8 +1068,11 @@ class AsyncAioJobIterator(AioEdgeIterator):
         if 'report_run_id' in response:
             response['id'] = response['report_run_id']
 
-        job._set_data(response)
-        self.get_api_assured().put_in_futures(self)
+        # AsyncAioJob stores the real iterator
+        # for when the result is ready to be queried
+        self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params)
+        self.job._set_data(response)
+        self._source_object.get_api_assured().put_in_futures(self)
 
     def submit_next_page_aio(self):
         pass
