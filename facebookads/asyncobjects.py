@@ -3,8 +3,8 @@ import random
 import logging
 import facebookads.objects as baseobjects
 from facebookads.asyncapi import FacebookAdsAsyncApi
-from facebookads.exceptions import FacebookRequestError,\
-    FacebookUnavailablePropertyException
+from facebookads.exceptions import (FacebookRequestError,
+    FacebookUnavailablePropertyException, JobFailedException)
 from facebookads.utils.fberrcodes import FacebookErrorCodes
 
 try:
@@ -25,7 +25,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
     Examples:
         >>> acc = AdAccount('account_id')
         >>> ad_names = []
-        >>> for row in acc.get_ads(fields=[Ad.Field.name]):
+        >>> for row in acc.get_ads_aio(fields=[Ad.Field.name]):
         >>>     ad_names.append(row["name"])
         >>> ad_names
     """
@@ -40,7 +40,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         Args:
             source_object: An AbstractObject instance from which to inspect an
                 edge. This object should have an id.
-            target_objects_class: Objects traverersed over will be initialized
+            target_objects_class: Objects traversed over will be initialized
                 with this AbstractObject class.
             fields (optional): A list of fields of target_objects_class to
                 automatically read in.
@@ -50,6 +50,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         """
         self.limit = 1000 if limit is None else limit
         self.starting_limit = 1000 if limit is None else limit
+
         if params is None:
             params = {"limit": self.limit}
         elif not params or "limit" not in params:
@@ -138,6 +139,8 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
 
     def read_next_page_aio(self, response):
         """
+        Parses and returns the data in response.
+        Gets the url of the next page in response and sets it as self._path attribute.
 
         :type response: facebookads.asyncapi.FacebookAsyncResponse
         :return:
@@ -168,6 +171,10 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         return self.build_objects_from_response(jresp)
 
     def build_objects_from_response(self, response):
+        """
+        Returns number of iterms in response.
+        Gets response data and adds it to self._queue.
+        """
         if 'data' in response and isinstance(response['data'], list):
             new_cnt = len(response['data'])
             self._queue += response['data']
@@ -188,9 +195,14 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
 
     def extract_results(self):
         """
+        If future is done, removes it from the futures list, dict and iterator itself.
+        Then, if future finished successfully,
+
         :return: FbFutureHolder
         """
         self._request_failed = False
+
+        # If no future in iterator and the iterator is finished, returns the iterator itself.
         if not self._future:
             if self._finished_iteration:
                 return self
@@ -220,9 +232,9 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
                 self._request_failed = True
                 self.delay_next_call_for = 0
                 logger.warn("request {} was cancelled, endpoint: {}, params: {}".format(
-                    str(self._future), str(self._path), self.params))
+                        str(self._future), str(self._path), self.params))
                 self.last_error = Exception("request {} was cancelled, endpoint: {}, params: {}".format(
-                    str(self._future), str(self._path), self.params))
+                        str(self._future), str(self._path), self.params))
                 self._source_object.get_api_assured().remove_from_futures(self)
                 del self._future
                 self._future = None
@@ -250,18 +262,29 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         self._future = None
 
     def on_success(self, response):
+        """
+        Increments success streak and success count, assigns the next page of response as self._path,
+        sets parameter ._page_ready as True.
+
+        If success streak >= 10 and self.limit < starting limit, changes the limit of facebook result data.
+        """
         self._response = response
         """:type: facebookads.asyncapi.FacebookAsyncResponse"""
         self.success_streak += 1
         self.success_cnt += 1
         self.read_next_page_aio(self._response)
         self._page_ready = True
+
         if not self._finished_iteration:
             if self.success_streak >= 10 and self.last_error_type != "too much data error" \
                     and self.limit < self.starting_limit:
                 self.change_the_next_page_limit(self.starting_limit, 2)
 
     def on_error(self, response):
+        """
+        If request is failed, submits next page, otherwise
+        finishes iterations and sets the number of success streaks as 0.
+        """
         self.is_exception_fatal(response)
         if not self._request_failed:
             self.submit_next_page_aio()
@@ -272,6 +295,10 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
     # errors handling
 
     def is_exception_fatal(self, resp):
+        """
+        If it is unfatal error, tries to recover.
+        If it is fatal error, sets _request_failed = True, logs it and sets _last_error = error.
+        """
         exc = resp.error()
         if isinstance(exc, FacebookRequestError):
             if exc._api_error_code == FacebookErrorCodes.temporary:
@@ -295,7 +322,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         self.set_last_error(exception_type)
         self.last_error = exc
         self._request_failed = True
-        logger.error("While loading url: {}, method GET with params: {}. "
+        logger.error("Fatal facebook error while loading url: {}, method GET with params: {}. "
                      "Caught an error: {}".format(
             str(self._path), str(self.params), str(exc)))
 
@@ -429,6 +456,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         :param limit: how big should slices be
         :rtype: list[AbstractCrudAioObject]
         """
+        ids = list(ids)
         api = api or FacebookAdsAsyncApi.get_default_api()
         params = dict(params or {})
         cls._assign_fields_to_params(fields, params)
@@ -442,6 +470,9 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
 
         result = []
         for response in api.get_async_results(cls):
+            if response._request_failed:
+                raise response.last_error
+
             for fbid, data in response.get_all_results():
                 obj = cls(fbid, api=api)
                 obj._set_data(data)
@@ -463,7 +494,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
     def iterate_edge_aio(self, target_objects_class, fields=None, params=None,
                          include_summary=True, limit=1000):
         """
-        Returns EdgeIterator with argument self as source_object and
+        Creates, sends it to the futures queue and returns EdgeIterator with argument self as source_object and
         the rest as given __init__ arguments.
 
         Note: list(iterate_edge_aio(...)) can prefetch all the objects.
@@ -477,7 +508,9 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
             include_summary=include_summary,
             limit=limit
         )
+
         iterator.submit_next_page_aio()
+
         return iterator
 
     def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None):
@@ -492,22 +525,14 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
             params = dict(params)
         self.__class__._assign_fields_to_params(fields, params)
 
-        # To force an async response from an edge, do a POST instead of GET.
-        # The response comes in the format of an AsyncAioJob which
-        # indicates the progress of the async request.
-        response = self.get_api_assured().call(
-            'POST',
-            (self.get_id_assured(), target_objects_class.get_endpoint()),
+        result = AsyncAioJobIterator(
+            self,
+            target_objects_class,
+            fields=fields,
             params=params,
-        ).json()
+        )
 
-        # AsyncAioJob stores the real iterator
-        # for when the result is ready to be queried
-        result = AsyncAioJob(target_objects_class)
-
-        if 'report_run_id' in response:
-            response['id'] = response['report_run_id']
-        result._set_data(response)
+        result.launch_job()
         return result
 
 
@@ -647,6 +672,16 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params, limit=limit)
 
     def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+        """
+        If async is False, returns EdgeIterator.
+
+        If async is True, creates a job and job iterator for it and
+        returns the job iterator (AsyncAioJobIterator class, subclass of EdgeIterator).
+
+        Regardless the async parameter, it puts the iterator to the queue so that
+        the results of execution are later available  through
+        FacebookAdsAsyncApi.get_default_api().get_all_async_results() call.
+        """
         if async:
             return self.iterate_edge_async_aio(
                 Insights,
@@ -938,11 +973,16 @@ class Insights(AbstractCrudAioObject, baseobjects.Insights):
 
 class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
+    def __init__(self, *args, **kwargs):
+        self.edge_params = kwargs.pop('edge_params', None)
+        super(AsyncAioJob, self).__init__(*args, **kwargs)
+
     def get_result(self, params=None, limit=1000):
         """
         Gets the final result from an async job
         Accepts params such as limit
         """
+
         return self.iterate_edge_aio(
             self.target_objects_class,
             params=params,
@@ -954,3 +994,146 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
         if self.Field.async_percent_completion not in self._data:
             self.remote_read()
         return self[self.Field.async_percent_completion] == 100
+
+    def get_async_status(self):
+        """
+        Returns async status, (Job Completed, Job Failed, Job Not Started, Job Started, Job Running)
+
+        :rtype: str
+        """
+        return self[self.Field.async_status]
+
+    def get_async_percent_completion(self):
+        """
+        Returns percent completion from 0 to 100
+
+        :rtype: int
+        """
+        return int(self[self.Field.async_percent_completion])
+
+    def is_failed(self):
+        """
+        Returns True if job is failed, otherwise False.
+
+        :rtype bool
+        """
+        if self.job.get_async_status() == 'Job Failed':
+            return True
+
+        return False
+
+    def get_report_run_id(self):
+        return self._data.get('report_run_id')
+
+
+class AsyncAioJobIterator(AioEdgeIterator):
+    def __init__(self, source_object, target_objects_class,
+                 fields=None, params=None, include_summary=True,
+                 limit=1000, stage='async_get_job', timeout=900):
+
+        super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
+                                                  fields=fields, params=params,
+                                                  include_summary=include_summary, limit=limit)
+        self.job = None
+        self.failed_attempt = 0
+        self.attempt = 0
+        self.request_issued = None
+        self.job_id = None
+        self.stage = None
+        self.stage = stage
+        self.job_started = time.time()
+        self.timeout = timeout
+
+    def launch_job(self):
+        """
+        1. Calls POST to create job
+        2. Creates and store in attributes AsyncAioJob
+        3. Puts self in futures
+
+        :return: None
+        """
+        # To force an async response from an edge, do a POST instead of GET.
+        # The response comes in the format of an AsyncAioJob which
+        # indicates the progress of the async request.
+        response = self.get_api_assured().call(
+            'POST',
+            (self.get_id_assured(), self.target_objects_class.get_endpoint()),
+            params=self.params,
+        ).json()
+
+        # AsyncAioJob stores the real iterator
+        # for when the result is ready to be queried
+        job = AsyncAioJob(self.target_objects_class, edge_params=self.params)
+
+        self.job = job
+        self.job_started = time.time()
+        self.attempt += 1
+        self.failed_attempt = 0
+
+        if 'report_run_id' in response:
+            response['id'] = response['report_run_id']
+
+        job._set_data(response)
+        self.get_api_assured().put_in_futures(self)
+
+    def submit_next_page_aio(self):
+        pass
+
+    def get_all_results(self):
+        return list(self.job.get_result())
+
+    def extract_results(self):
+        """
+        Returns self if the results are not ready, otherwise returns iterator by results
+        of class AioEdgeIterator.
+        """
+
+        self.job.remote_read()
+        async_status = self.job.get_async_status()
+        job_id = self.job[self.job.Field.id]
+        res = str(self)
+
+        print('completion', self.job.get_async_percent_completion())
+        print('status', self.job.get_async_status())
+
+        if async_status == 'Job Completed':
+            if self.job.get_async_percent_completion() == 100:
+                # return new iterator over job's results
+                results_iterator = self.job.get_result()
+                return results_iterator
+
+            elif self.attempt > 8:
+                raise JobFailedException("job id {} failed for {}, reason unknown, response: {}, "
+                         "report params: {}".format(self.job_id, self, res, self.params))
+            else:
+                # create new job and wait for it to complete
+                self.launch_job()
+
+        elif async_status == 'Job Failed':
+            if self.failed_attempt > 3:
+                logger.warn("job id {} failed for {}, report params: {}, response: "
+                            "'{}'".format(job_id, self, self.params, res))
+
+                raise JobFailedException("job id {} failed for {}, "
+                    "report params: {}, response: '{}'".format(
+                        self.job_id, self, self.params, res))
+            else:
+                # job check says that it's failed but really it is be running
+                # we just need to recheck it's status in several seconds
+                time.sleep(0.5 + 1 * self.failed_attempt)
+                self.failed_attempt += 1
+
+        else:
+            if time.time() - self.job_started > self.timeout:
+                logger.warn("job id {} stuck for 15 minutes for {}, report "
+                            "params: {}, response: '{}'".format(self.job_id, self, self.params, res))
+
+                if self.attempt > 5:
+                    raise JobFailedException("job id {} stuck for 15 minutes for {}, "
+                        "report params: {}, response: '{}'".format(
+                            self.job_id, self, self.params, res))
+                # create new job and wait for it to complete
+                self.launch_job()
+
+        # we need to return self into thread pool and wait for job completion
+        return self

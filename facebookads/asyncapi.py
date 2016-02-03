@@ -181,6 +181,9 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
         return future
 
     def put_in_futures(self, edge_iter):
+        """
+        Adds iterator to a queue of futures self._futures_ordered and to dictionary self._futures
+        """
         with self._thread_lock:
             edge_iter_id = id(edge_iter)
             self._futures_ordered.append(edge_iter_id)
@@ -202,8 +205,10 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
         with self._thread_lock:
             try:
                 edge_iter_id = self._futures_ordered.pop(0)
+
                 if not edge_iter_id in self._futures:
                     return "next"
+
                 edge_iter = self._futures.pop(edge_iter_id)
             except IndexError:
                 return None
@@ -222,19 +227,26 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
 
     def get_all_async_results(self):
         """
+        Gets one iterator from _futures_ordered attribute and if it's callable,
+        calls its method extract_result().
+
+        If iterator is done or failed, returns the iterator, otherwise puts it in the features.
+
         :rtype: list[facebookads.asyncobjects.AioEdgeIterator]
         """
         time.sleep(0.01)
         cnt = 0
+
         while True:
             cnt += 1
             edge_iter = self.pop_one_from_futures()
+
             if edge_iter is None:
                 break
             elif isinstance(edge_iter, six.string_types) and edge_iter == "next":
                 continue
 
-            edge_iter.extract_results()
+            edge_iter = edge_iter.extract_results()
 
             if edge_iter._page_ready and edge_iter._finished_iteration:
                 # loaded all the data
@@ -249,9 +261,9 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                     # some more loading needs to be done
                     self.put_in_futures(edge_iter)
 
-                    if cnt >= len(self._futures):
-                        cnt = 0
-                        time.sleep(0.3)
+            if cnt >= len(self._futures):
+                cnt = 0
+                time.sleep(0.3)
 
     def get_async_results(self, target_objects_class):
         """
