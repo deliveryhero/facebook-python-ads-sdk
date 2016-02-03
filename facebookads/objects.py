@@ -47,8 +47,6 @@ from facebookads.video_uploader import (
     VideoEncodingStatusChecker,
 )
 
-import requests
-
 import hashlib
 import collections
 import json
@@ -2530,7 +2528,6 @@ class TargetingSearch(AbstractObject):
                         ret_val.append(search_obj)
 
         return ret_val
-
 
 class TargetingSpecsField(object):
 
