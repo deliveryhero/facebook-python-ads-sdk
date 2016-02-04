@@ -1091,8 +1091,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
         job_id = self.job[self.job.Field.id]
         res = str(self)
 
-        print('completion', self.job.get_async_percent_completion())
-        print('status', self.job.get_async_status())
+        logger.debug('completion: {}, job_id: {}'.format(self.job.get_async_percent_completion(), job_id))
+        logger.debug('status: {}, job_id: {}'.format(self.job.get_async_status(), job_id))
 
         if async_status == 'Job Completed':
             if self.job.get_async_percent_completion() == 100:
