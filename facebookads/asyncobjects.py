@@ -1029,7 +1029,7 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 class AsyncAioJobIterator(AioEdgeIterator):
     def __init__(self, source_object, target_objects_class,
                  fields=None, params=None, include_summary=True,
-                 limit=1000, stage='async_get_job', timeout=900):
+                 limit=1000, stage='async_get_job', no_progress_timeout=600):
 
         super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
                                                   fields=fields, params=params,
@@ -1042,7 +1042,11 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.stage = None
         self.stage = stage
         self.job_started = time.time()
-        self.timeout = timeout
+        self.job_last_checked = None
+
+        self.job_last_completion = 0
+        self.job_last_completion_change = time.time()
+        self.no_progress_timeout = no_progress_timeout
 
     def launch_job(self):
         """
@@ -1073,6 +1077,10 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params)
         self.job._set_data(response)
         self._source_object.get_api_assured().put_in_futures(self)
+        logger.debug('started a job, job_id: {}'.format(response['id'] if 'id' in response else 'no id'))
+
+        self.job_last_completion_change = time.time()
+        self.job_last_completion = 0
 
     def submit_next_page_aio(self):
         pass
@@ -1085,17 +1093,23 @@ class AsyncAioJobIterator(AioEdgeIterator):
         Returns self if the results are not ready, otherwise returns iterator by results
         of class AioEdgeIterator.
         """
+        if self.job_last_checked and time.time() - self.job_last_checked < 30:
+            return self
 
         self.job.remote_read()
         async_status = self.job.get_async_status()
         job_id = self.job[self.job.Field.id]
         res = str(self)
 
-        logger.debug('completion: {}, job_id: {}'.format(self.job.get_async_percent_completion(), job_id))
-        logger.debug('status: {}, job_id: {}'.format(self.job.get_async_status(), job_id))
+        self.job_last_checked = time.time()
+        job_completion = self.job.get_async_percent_completion()
+
+        logger.debug('job_id: {}, completion: {}, status: {}'.format(
+                job_id, job_completion, self.job.get_async_status()))
 
         if async_status == 'Job Completed':
             if self.job.get_async_percent_completion() == 100:
+                self.job_last_completion = job_completion
                 # return new iterator over job's results
                 results_iterator = self.job.get_result()
                 return results_iterator
@@ -1122,9 +1136,9 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 self.failed_attempt += 1
 
         else:
-            if time.time() - self.job_started > self.timeout:
-                logger.warn("job id {} stuck for 15 minutes for {}, report "
-                            "params: {}, response: '{}'".format(self.job_id, self, self.params, res))
+            if time.time() - self.job_last_completion_change > self.no_progress_timeout:
+                logger.warn("job id {} stuck, report params: {}, response: '{}'".format(
+                        self.job_id, self.params, res))
 
                 if self.attempt > 5:
                     raise JobFailedException("job id {} stuck for 15 minutes for {}, "
@@ -1133,5 +1147,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 # create new job and wait for it to complete
                 self.launch_job()
 
+        if self.job_last_completion != job_completion:
+            self.job_last_completion_change = time.time()
+        self.job_last_completion = job_completion
         # we need to return self into thread pool and wait for job completion
         return self
