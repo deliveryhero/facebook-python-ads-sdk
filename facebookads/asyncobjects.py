@@ -1076,6 +1076,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         # for when the result is ready to be queried
         self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params)
         self.job._set_data(response)
+        self.job_id = response['id'] if 'id' in response else 'no id'
         self._source_object.get_api_assured().put_in_futures(self)
         logger.debug('started a job, job_id: {}'.format(response['id'] if 'id' in response else 'no id'))
 
@@ -1098,14 +1099,12 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
         self.job.remote_read()
         async_status = self.job.get_async_status()
-        job_id = self.job[self.job.Field.id]
-        res = str(self)
 
         self.job_last_checked = time.time()
         job_completion = self.job.get_async_percent_completion()
 
         logger.debug('job_id: {}, completion: {}, status: {}'.format(
-                job_id, job_completion, self.job.get_async_status()))
+                self.job_id, job_completion, self.job.get_async_status()))
 
         if async_status == 'Job Completed':
             if self.job.get_async_percent_completion() == 100:
@@ -1116,7 +1115,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
             elif self.attempt > 8:
                 raise JobFailedException("job id {} failed for {}, reason unknown, response: {}, "
-                         "report params: {}".format(self.job_id, self, res, self.params))
+                         "report params: {}".format(self.job_id, self, str(self.job), self.params))
             else:
                 # create new job and wait for it to complete
                 self.launch_job()
@@ -1124,11 +1123,11 @@ class AsyncAioJobIterator(AioEdgeIterator):
         elif async_status == 'Job Failed':
             if self.failed_attempt > 3:
                 logger.warn("job id {} failed for {}, report params: {}, response: "
-                            "'{}'".format(job_id, self, self.params, res))
+                            "'{}'".format(self.job_id, self, self.params, str(self.job)))
 
                 raise JobFailedException("job id {} failed for {}, "
                     "report params: {}, response: '{}'".format(
-                        self.job_id, self, self.params, res))
+                        self.job_id, self, self.params, str(self.job)))
             else:
                 # job check says that it's failed but really it is be running
                 # we just need to recheck it's status in several seconds
@@ -1138,12 +1137,12 @@ class AsyncAioJobIterator(AioEdgeIterator):
         else:
             if time.time() - self.job_last_completion_change > self.no_progress_timeout:
                 logger.warn("job id {} stuck, report params: {}, response: '{}'".format(
-                        self.job_id, self.params, res))
+                        self.job_id, self.params, str(self.job)))
 
                 if self.attempt > 5:
                     raise JobFailedException("job id {} stuck for 15 minutes for {}, "
                         "report params: {}, response: '{}'".format(
-                            self.job_id, self, self.params, res))
+                            self.job_id, self, self.params, str(self.job)))
                 # create new job and wait for it to complete
                 self.launch_job()
 

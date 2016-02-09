@@ -7,7 +7,10 @@ How to run:
 
 import sys
 
-import mock
+try:
+    import mock
+except ImportError:
+    from unittest import mock
 
 from facebookads.utils.httpretries import retry_policy
 from facebookads.test.async_docs_utils import *
