@@ -513,7 +513,8 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
 
         return iterator
 
-    def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None):
+    def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None,
+                               has_action=None, needs_action_device=None):
         """
         Returns an AsyncAioJob which can be checked using remote_read()
         to verify when the job is completed and the result ready to query
@@ -523,13 +524,13 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
             params = {}
         else:
             params = dict(params)
-        self.__class__._assign_fields_to_params(fields, params)
 
         result = AsyncAioJobIterator(
             self,
             target_objects_class,
             fields=fields,
-            params=params,
+            params=params, has_action=has_action,
+            needs_action_device=needs_action_device
         )
 
         result.launch_job()
@@ -671,7 +672,8 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         """
         return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params, limit=limit)
 
-    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False,
+                         has_action=None, needs_action_device=None):
         """
         If async is False, returns EdgeIterator.
 
@@ -686,7 +688,7 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params
+                params, has_action, needs_action_device
             )
         return self.iterate_edge_aio(
             Insights,
@@ -975,6 +977,9 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
     def __init__(self, *args, **kwargs):
         self.edge_params = kwargs.pop('edge_params', None)
+        self.has_action = kwargs.pop('has_action', None)
+        self.needs_action_device = kwargs.pop('needs_action_device', None)
+
         super(AsyncAioJob, self).__init__(*args, **kwargs)
 
     def get_result(self, params=None, limit=1000):
@@ -1029,7 +1034,9 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 class AsyncAioJobIterator(AioEdgeIterator):
     def __init__(self, source_object, target_objects_class,
                  fields=None, params=None, include_summary=True,
-                 limit=1000, stage='async_get_job', no_progress_timeout=600):
+                 limit=1000, stage='async_get_job',
+                 no_progress_timeout=600, not_started_timeout=1800,
+                 has_action=None, needs_action_device=None):
 
         super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
                                                   fields=fields, params=params,
@@ -1047,6 +1054,10 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.job_last_completion = 0
         self.job_last_completion_change = time.time()
         self.no_progress_timeout = no_progress_timeout
+        self.not_started_timeout = not_started_timeout
+
+        self.has_action = has_action
+        self.needs_action_device = needs_action_device
 
     def launch_job(self):
         """
@@ -1074,7 +1085,9 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
         # AsyncAioJob stores the real iterator
         # for when the result is ready to be queried
-        self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params)
+        self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params,
+                               has_action=self.has_action,
+                               needs_action_device=self.needs_action_device)
         self.job._set_data(response)
         self.job_id = response['id'] if 'id' in response else 'no id'
         self._source_object.get_api_assured().put_in_futures(self)
@@ -1135,7 +1148,10 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 self.failed_attempt += 1
 
         else:
-            if time.time() - self.job_last_completion_change > self.no_progress_timeout:
+            if (async_status == "Job Not Started" and
+                        time.time() - self.job_last_completion_change > self.not_started_timeout) or \
+                    (async_status != "Job Not Started" and
+                        time.time() - self.job_last_completion_change > self.no_progress_timeout):
                 logger.warn("job id {} stuck, report params: {}, response: '{}'".format(
                         self.job_id, self.params, str(self.job)))
 
