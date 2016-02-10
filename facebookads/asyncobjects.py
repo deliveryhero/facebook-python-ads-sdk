@@ -1147,18 +1147,25 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 time.sleep(0.5 + 1 * self.failed_attempt)
                 self.failed_attempt += 1
 
+        elif async_status == "Job Not Started":
+            if time.time() - self.job_last_completion_change > self.not_started_timeout:
+                logger.warn("job id {} is not started yet, report params: {}, response: '{}'".format(
+                        self.job_id, self.params, str(self.job)))
+
+                if self.attempt > 2:
+                    raise JobFailedException("job id {} is not started for 45 minutes, "
+                        "report params: {}, response: '{}'".format(
+                            self.job_id, self.params, str(self.job)))
+
         else:
-            if (async_status == "Job Not Started" and
-                        time.time() - self.job_last_completion_change > self.not_started_timeout) or \
-                    (async_status != "Job Not Started" and
-                        time.time() - self.job_last_completion_change > self.no_progress_timeout):
+            if time.time() - self.job_last_completion_change > self.no_progress_timeout:
                 logger.warn("job id {} stuck, report params: {}, response: '{}'".format(
                         self.job_id, self.params, str(self.job)))
 
                 if self.attempt > 5:
-                    raise JobFailedException("job id {} stuck for 15 minutes for {}, "
+                    raise JobFailedException("job id {} stuck, "
                         "report params: {}, response: '{}'".format(
-                            self.job_id, self, self.params, str(self.job)))
+                            self.job_id, self.params, str(self.job)))
                 # create new job and wait for it to complete
                 self.launch_job()
 
