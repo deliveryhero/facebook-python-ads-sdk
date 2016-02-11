@@ -469,7 +469,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
             cnt += limit
 
         result = []
-        for response in api.get_async_results(cls):
+        for response in api.get_typed_async_results(cls):
             if response._request_failed:
                 raise response.last_error
 
