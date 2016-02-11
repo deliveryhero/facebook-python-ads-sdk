@@ -259,6 +259,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                 else:
                     # some more loading needs to be done
                     edge_iter.submit_next_page_aio()
+                    self.put_in_futures(edge_iter)
 
             if cnt >= len(self._futures):
                 cnt = 0
@@ -298,6 +299,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                 else:
                     # some more loading needs to be done
                     edge_iter.submit_next_page_aio()
+                    self.put_in_futures(edge_iter)
 
             # checked on all tasks in queue
             if cnt >= len(self._futures):
