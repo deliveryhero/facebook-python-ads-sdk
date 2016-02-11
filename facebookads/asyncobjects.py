@@ -1129,18 +1129,25 @@ class AsyncAioJobIterator(AioEdgeIterator):
             elif self.attempt > 8:
                 raise JobFailedException("job id {} failed for {}, reason unknown, response: {}, "
                          "report params: {}".format(self.job_id, self, str(self.job), self.params))
-            else:
-                # create new job and wait for it to complete
-                self.launch_job()
+
+            # create new job and wait for it to complete
+            self.launch_job()
 
         elif async_status == 'Job Failed':
             if self.failed_attempt > 3:
-                logger.warn("job id {} failed for {}, report params: {}, response: "
-                            "'{}'".format(self.job_id, self, self.params, str(self.job)))
+                logger.warn("job id {} failed, failed attempts {}, "
+                            "job requested at {}, attempts made {}, "
+                            "report params: {}, response: '{}'".format(
+                    self.job_id, self.failed_attempt,
+                    self.job_started_at, self.attempt,
+                    self.params, str(self.job)))
 
-                raise JobFailedException("job id {} failed for {}, "
-                    "report params: {}, response: '{}'".format(
-                        self.job_id, self, self.params, str(self.job)))
+                raise JobFailedException("job id {} failed, failed attempts {}, "
+                                         "job requested at {}, attempts made {}, "
+                                         "report params: {}, response: '{}'".format(
+                    self.job_id, self.failed_attempt,
+                    self.job_started_at, self.attempt,
+                    self.params, str(self.job)))
 
             # job check says that it's failed but really it may be still running
             # we just need to recheck it's status in several seconds
@@ -1149,25 +1156,37 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
         elif async_status == "Job Not Started":
             if time.time() - self.job_started_at > self.not_started_timeout:
-                logger.warn(
-                    "job id {} is not started yet, job requested at {}, "
-                    "report params: {}, response: '{}'".format(
-                        self.job_id, self.job_started_at, self.params, str(self.job)))
+                logger.warn("job id {} is not started yet, "
+                            "job requested at {}, attempts made {}, "
+                            "report params: {}, response: '{}'".format(
+                    self.job_id, self.job_started_at, self.attempt,
+                    self.params, str(self.job)))
 
                 if self.attempt > 2:
-                    raise JobFailedException("job id {} is not started for 45 minutes, "
-                        "report params: {}, response: '{}'".format(
-                            self.job_id, self.params, str(self.job)))
+                    raise JobFailedException("job id {} is not started yet, "
+                                             "job requested at {}, attempts made {}, "
+                                             "report params: {}, response: '{}'".format(
+                        self.job_id, self.job_started_at, self.attempt,
+                        self.params, str(self.job)))
+
+                self.launch_job()
 
         else:
             if time.time() - self.job_last_completion_change_time > self.no_progress_timeout:
-                logger.warn("job id {} stuck, report params: {}, response: '{}'".format(
-                        self.job_id, self.params, str(self.job)))
+                logger.warn("job id {} stuck, completion {}, "
+                            "job requested at {}, attempts made {}, "
+                            "report params: {}, response: '{}'".format(
+                    self.job_id, current_job_completion_value,
+                    self.job_started_at, self.attempt,
+                    self.params, str(self.job)))
 
                 if self.attempt > 5:
-                    raise JobFailedException("job id {} stuck, "
-                        "report params: {}, response: '{}'".format(
-                            self.job_id, self.params, str(self.job)))
+                    raise JobFailedException("job id {} stuck, completion {}, "
+                            "job requested at {}, attempts made {}, "
+                            "report params: {}, response: '{}'".format(
+                    self.job_id, current_job_completion_value,
+                    self.job_started_at, self.attempt,
+                    self.params, str(self.job)))
 
                 # create new job and wait for it to complete
                 self.launch_job()
