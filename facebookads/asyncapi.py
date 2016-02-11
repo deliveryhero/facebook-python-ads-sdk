@@ -226,6 +226,25 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
 
     # helper results iterator
 
+    def purge_futures_queue(self):
+        while True:
+            edge_iter = self.pop_one_from_futures()
+            if edge_iter is None:
+                break
+            elif isinstance(edge_iter, six.string_types) and edge_iter == "next":
+                continue
+
+            if edge_iter._future:
+                try:
+                    if edge_iter._future.done():
+                        result = edge_iter._future.result()
+                        del result
+                    elif edge_iter._future.running():
+                        edge_iter._future.cancel()
+                except Exception as exc:
+                    logger.warn("Future stop failed: {}".format(exc))
+                del edge_iter._future
+
     def get_all_async_results(self):
         """
         Gets one iterator from _futures_ordered attribute and if it's callable,
