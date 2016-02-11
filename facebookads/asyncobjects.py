@@ -368,7 +368,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
     def recover_rate_limit_error(self, exc):
         err_type = "rate limit error"
         self.set_non_fatal_error(exc, err_type)
-        self.delay_next_call_for = 10 + random.randint(0, 9) + 10 * self.errors_streak
+        self.delay_next_call_for = random.randint(30, 60) + 30 * self.errors_streak
 
     # error helpers
 
@@ -1048,11 +1048,11 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.job_id = None
         self.stage = None
         self.stage = stage
-        self.job_started = time.time()
+        self.job_started_at = time.time()
         self.job_last_checked = None
 
-        self.job_last_completion = 0
-        self.job_last_completion_change = time.time()
+        self.job_previous_completion_value = 0
+        self.job_last_completion_change_time = time.time()
         self.no_progress_timeout = no_progress_timeout
         self.not_started_timeout = not_started_timeout
 
@@ -1076,7 +1076,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
             params=self.params,
         ).json()
 
-        self.job_started = time.time()
+        self.job_started_at = time.time()
         self.attempt += 1
         self.failed_attempt = 0
 
@@ -1093,11 +1093,11 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self._source_object.get_api_assured().put_in_futures(self)
         logger.debug('started a job, job_id: {}'.format(response['id'] if 'id' in response else 'no id'))
 
-        self.job_last_completion_change = time.time()
-        self.job_last_completion = 0
+        self.job_last_completion_change_time = time.time()
+        self.job_previous_completion_value = 0
 
     def submit_next_page_aio(self):
-        pass
+        self._source_object.get_api_assured().put_in_futures(self)
 
     def get_all_results(self):
         return list(self.job.get_result())
@@ -1114,14 +1114,14 @@ class AsyncAioJobIterator(AioEdgeIterator):
         async_status = self.job.get_async_status()
 
         self.job_last_checked = time.time()
-        job_completion = self.job.get_async_percent_completion()
+        current_job_completion_value = self.job.get_async_percent_completion()
 
         logger.debug('job_id: {}, completion: {}, status: {}'.format(
-                self.job_id, job_completion, self.job.get_async_status()))
+                self.job_id, current_job_completion_value, self.job.get_async_status()))
 
         if async_status == 'Job Completed':
             if self.job.get_async_percent_completion() == 100:
-                self.job_last_completion = job_completion
+                self.job_previous_completion_value = current_job_completion_value
                 # return new iterator over job's results
                 results_iterator = self.job.get_result()
                 return results_iterator
@@ -1141,16 +1141,18 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 raise JobFailedException("job id {} failed for {}, "
                     "report params: {}, response: '{}'".format(
                         self.job_id, self, self.params, str(self.job)))
-            else:
-                # job check says that it's failed but really it is be running
-                # we just need to recheck it's status in several seconds
-                time.sleep(0.5 + 1 * self.failed_attempt)
-                self.failed_attempt += 1
+
+            # job check says that it's failed but really it may be still running
+            # we just need to recheck it's status in several seconds
+            time.sleep(0.5 + 1 * self.failed_attempt)
+            self.failed_attempt += 1
 
         elif async_status == "Job Not Started":
-            if time.time() - self.job_last_completion_change > self.not_started_timeout:
-                logger.warn("job id {} is not started yet, report params: {}, response: '{}'".format(
-                        self.job_id, self.params, str(self.job)))
+            if time.time() - self.job_started_at > self.not_started_timeout:
+                logger.warn(
+                    "job id {} is not started yet, job requested at {}, "
+                    "report params: {}, response: '{}'".format(
+                        self.job_id, self.job_started_at, self.params, str(self.job)))
 
                 if self.attempt > 2:
                     raise JobFailedException("job id {} is not started for 45 minutes, "
@@ -1158,7 +1160,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                             self.job_id, self.params, str(self.job)))
 
         else:
-            if time.time() - self.job_last_completion_change > self.no_progress_timeout:
+            if time.time() - self.job_last_completion_change_time > self.no_progress_timeout:
                 logger.warn("job id {} stuck, report params: {}, response: '{}'".format(
                         self.job_id, self.params, str(self.job)))
 
@@ -1166,11 +1168,12 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     raise JobFailedException("job id {} stuck, "
                         "report params: {}, response: '{}'".format(
                             self.job_id, self.params, str(self.job)))
+
                 # create new job and wait for it to complete
                 self.launch_job()
 
-        if self.job_last_completion != job_completion:
-            self.job_last_completion_change = time.time()
-        self.job_last_completion = job_completion
+        if self.job_previous_completion_value != current_job_completion_value:
+            self.job_last_completion_change_time = time.time()
+        self.job_previous_completion_value = current_job_completion_value
         # we need to return self into thread pool and wait for job completion
         return self

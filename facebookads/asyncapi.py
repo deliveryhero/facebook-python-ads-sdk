@@ -186,7 +186,8 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
         """
         with self._thread_lock:
             edge_iter_id = id(edge_iter)
-            self._futures_ordered.append(edge_iter_id)
+            if edge_iter_id not in self._futures_ordered:
+                self._futures_ordered.append(edge_iter_id)
             self._futures[edge_iter_id] = edge_iter
 
     def remove_from_futures(self, edge_iter):
@@ -234,7 +235,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
 
         :rtype: list[facebookads.asyncobjects.AioEdgeIterator]
         """
-        time.sleep(0.01)
+        time.sleep(0.02)
         cnt = 0
 
         while True:
@@ -256,21 +257,19 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                     # request failed unrecoverably
                     yield edge_iter
                 else:
-                    edge_iter.submit_next_page_aio()
-
                     # some more loading needs to be done
-                    self.put_in_futures(edge_iter)
+                    edge_iter.submit_next_page_aio()
 
             if cnt >= len(self._futures):
                 cnt = 0
-                time.sleep(0.3)
+                time.sleep(0.5)
 
-    def get_async_results(self, target_objects_class):
+    def get_typed_async_results(self, target_objects_class):
         """
         :rtype: list[facebookads.asyncobjects.AioEdgeIterator]
         """
-        time.sleep(0.01)
-        cnt = 0
+        time.sleep(0.02)
+        cnt, other_types_cnt = 0, 0
         while True:
             cnt += 1
             edge_iter = self.pop_one_from_futures()
@@ -286,9 +285,9 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                 if edge_iter._target_objects_class == target_objects_class:
                     yield edge_iter
                 else:
-                    raise FacebookBadObjectError(
-                            "got object of type {}, when {} expected".format(
-                                    target_objects_class, edge_iter._target_objects_class))
+                    other_types_cnt += 1
+                    self.put_in_futures(edge_iter)
+
             else:
                 if edge_iter._request_failed:
                     # request failed unrecoverably
@@ -297,45 +296,14 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
                     else:
                         self.put_in_futures(edge_iter)
                 else:
+                    # some more loading needs to be done
                     edge_iter.submit_next_page_aio()
 
-                    # some more loading needs to be done
-                    self.put_in_futures(edge_iter)
-
-                    if cnt >= len(self._futures):
-                        cnt = 0
-                        time.sleep(0.3)
-
-    def get_paged_async_results(self):
-        """
-        :rtype: list[facebookads.asyncobjects.AioEdgeIterator]
-        """
-        time.sleep(0.01)
-        cnt = 0
-        while True:
-            cnt += 1
-            edge_iter = self.pop_one_from_futures()
-            if edge_iter is None:
-                break
-            elif isinstance(edge_iter, six.string_types) and edge_iter == "next":
-                continue
-
-            edge_iter = edge_iter.extract_results()
-
-            if edge_iter._page_ready:
-                edge_iter.submit_next_page_aio()
-                # loaded all the data
-                yield edge_iter
-            else:
-                if edge_iter._request_failed:
-                    # request failed unrecoverably
-                    yield edge_iter
-                else:
-                    edge_iter.submit_next_page_aio()
-
-                    # some more loading needs to be done
-                    self.put_in_futures(edge_iter)
-
-                    if cnt >= len(self._futures):
-                        cnt = 0
-                        time.sleep(0.3)
+            # checked on all tasks in queue
+            if cnt >= len(self._futures):
+                # we've yielded all objects of target_objects_class type
+                if other_types_cnt >= len(self._futures):
+                    break
+                cnt = 0
+                other_types_cnt = 0
+                time.sleep(0.5)
