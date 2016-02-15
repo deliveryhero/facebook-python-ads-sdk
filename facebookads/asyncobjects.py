@@ -1100,7 +1100,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self._source_object.get_api_assured().put_in_futures(self)
 
     def get_all_results(self):
-        return list(self.job.get_result())
+        return list(self.job.get_result(limit=self.limit))
 
     def extract_results(self):
         """
@@ -1123,7 +1123,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
             if self.job.get_async_percent_completion() == 100:
                 self.job_previous_completion_value = current_job_completion_value
                 # return new iterator over job's results
-                results_iterator = self.job.get_result()
+                results_iterator = self.job.get_result(limit=self.limit)
                 return results_iterator
 
             elif self.attempt > 8:
