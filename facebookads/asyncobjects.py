@@ -515,7 +515,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         return iterator
 
     def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None,
-                               has_action=None, needs_action_device=None):
+                               has_action=None, needs_action_device=None, limit=500):
         """
         Returns an AsyncAioJob which can be checked using remote_read()
         to verify when the job is completed and the result ready to query
@@ -529,7 +529,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         result = AsyncAioJobIterator(
             self,
             target_objects_class,
-            fields=fields,
+            fields=fields, limit=limit,
             params=params, has_action=has_action,
             needs_action_device=needs_action_device
         )
@@ -701,13 +701,13 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params, has_action, needs_action_device
+                params, has_action, needs_action_device, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
             fields,
             params,
-            include_summary=False,
+            include_summary=False, limit=limit
         )
 
 
@@ -733,13 +733,13 @@ class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params
+                params, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
             fields,
             params,
-            include_summary=False,
+            include_summary=False, limit=limit
         )
 
 
@@ -757,13 +757,13 @@ class AdSet(AbstractCrudAioObject, baseobjects.AdSet):
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params
+                params, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
             fields,
             params,
-            include_summary=False,
+            include_summary=False, limit=limit
         )
 
 
@@ -857,13 +857,13 @@ class Ad(AbstractCrudAioObject, baseobjects.Ad):
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params
+                params, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
             fields,
             params,
-            include_summary=False,
+            include_summary=False, limit=limit
         )
 
 
@@ -908,27 +908,27 @@ class ReachFrequencyPrediction(AbstractCrudAioObject, baseobjects.ReachFrequency
 
 
 class Business(AbstractCrudAioObject, baseobjects.Business):
-    def get_ad_accounts_aio(self, fields=None, params=None, limit=1000):
+    def get_ad_accounts_aio(self, fields=None, params=None, limit=50):
         return self.iterate_edge_aio(AdAccount, fields, params, limit=limit)
 
     def get_product_catalogs_aio(self, fields=None, params=None):
         return self.iterate_edge_aio(ProductCatalog, fields, params)
 
-    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+    def get_insights_aio(self, fields=None, params=None, limit=500, async=False):
         if async:
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params
+                params, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
             fields,
             params,
-            include_summary=False,
+            include_summary=False, limit=limit
         )
 
-    def get_business_projects_aio(self, fields=None, params=None, limit=100):
+    def get_business_projects_aio(self, fields=None, params=None, limit=50):
         return self.iterate_edge_aio(BusinessProject, fields, params, limit=limit)
 
 
@@ -1061,7 +1061,7 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 class AsyncAioJobIterator(AioEdgeIterator):
     def __init__(self, source_object, target_objects_class,
                  fields=None, params=None, include_summary=True,
-                 limit=1000, stage='async_get_job',
+                 limit=500, stage='async_get_job',
                  no_progress_timeout=600, not_started_timeout=1800,
                  has_action=None, needs_action_device=None):
 
