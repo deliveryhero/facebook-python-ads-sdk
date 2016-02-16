@@ -547,6 +547,18 @@ class Page(AbstractCrudAioObject, baseobjects.Page):
 
 
 class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
+    def add_user(self, user, business, role):
+        params = {
+            'user': user,
+            'business': business,
+            'role': role,
+        }
+        return self.get_api_assured().call(
+            'POST',
+            (self.get_id_assured(), 'userpermissions'),
+            params=params,
+        )
+
     def get_activities_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over Activity's associated with this account."""
         return self.iterate_edge_aio(baseobjects.Activity, fields, params, limit=limit)
