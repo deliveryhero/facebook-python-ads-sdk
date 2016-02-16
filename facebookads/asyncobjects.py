@@ -216,6 +216,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
 
             self.delay_next_call_for = 0
 
+            self.last_yield = time.time()
             if result.is_failure():
                 self.on_error(result)
             else:
@@ -226,9 +227,9 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
                 # still not running, just pending in a queue
                 self._request_failed = False
                 self._page_ready = False
-                self.last_yield = time.time()
             elif self._future.cancelled():
                 # was cancelled
+                self.last_yield = time.time()
                 self._request_failed = True
                 self.delay_next_call_for = 0
                 logger.warn("request {} was cancelled, endpoint: {}, params: {}".format(
