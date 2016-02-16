@@ -916,6 +916,20 @@ class Business(AbstractCrudAioObject, baseobjects.Business):
             include_summary=False,
         )
 
+    def get_business_projects_aio(self, fields=None, params=None, limit=100):
+        return self.iterate_edge_aio(BusinessProject, fields, params, limit=limit)
+
+
+class BusinessProject(AbstractCrudAioObject):
+
+    class Field(object):
+        id = 'id'
+        name = 'name'
+
+    @classmethod
+    def get_endpoint(cls):
+        return 'businessprojects'
+
 
 class ProductCatalog(AbstractCrudAioObject, baseobjects.ProductCatalog):
     pass
@@ -1108,7 +1122,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
         Returns self if the results are not ready, otherwise returns iterator by results
         of class AioEdgeIterator.
         """
-        if self.job_last_checked and time.time() - self.job_last_checked < 30:
+        # TODO: change it to 20 when we paralellize initial insights download
+        if self.job_last_checked and time.time() - self.job_last_checked < 12:
             return self
 
         self.job.remote_read()
