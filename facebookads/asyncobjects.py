@@ -770,7 +770,7 @@ class AdSet(AbstractCrudAioObject, baseobjects.AdSet):
         )
 
 
-class TargetingSearch(AbstractCrudAioObject, baseobjects.TargetingSearch):
+class TargetingSearch(AbstractCrudAioObject, baseobjects.AbstractCrudObject, baseobjects.TargetingSearch):
 
     # TODO: replace this hack with a paged iterator abstract base
     class Field(object):
