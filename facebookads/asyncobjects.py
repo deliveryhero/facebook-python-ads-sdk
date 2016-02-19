@@ -442,7 +442,7 @@ class ByIdsIterator(AioEdgeIterator):
         return new_cnt
 
 
-class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
+class AbstractCrudAioObject(object):
     """
     Extends AbstractCrudObject and implements async iter_edge operation.
     """
@@ -450,6 +450,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
     @classmethod
     def get_by_ids(cls, ids, params=None, fields=None, api=None, limit=50):
         """Get objects by id list
+        :type cls: AbstractCrudObject
         :type ids: list
         :type params: didct
         :type fields: list
@@ -486,6 +487,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         """
         Returns the api associated with the object. If None, returns the
         default api.
+        :type self: AbstractCrudObject
         :rtype: FacebookAdsAsyncApi
         """
         return self._api or FacebookAdsAsyncApi.get_default_api()
@@ -520,6 +522,7 @@ class AbstractCrudAioObject(baseobjects.AbstractCrudObject):
         Returns an AsyncAioJob which can be checked using remote_read()
         to verify when the job is completed and the result ready to query
         or download using get_result()
+        :type target_objects_class: AbstractCrudObject
         """
         if not params:
             params = {}
@@ -932,7 +935,7 @@ class Business(AbstractCrudAioObject, baseobjects.Business):
         return self.iterate_edge_aio(BusinessProject, fields, params, limit=limit)
 
 
-class BusinessProject(AbstractCrudAioObject):
+class BusinessProject(AbstractCrudAioObject, baseobjects.AbstractCrudObject):
 
     class Field(object):
         id = 'id'
@@ -1042,20 +1045,6 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
         :rtype: int
         """
         return int(self[self.Field.async_percent_completion])
-
-    def is_failed(self):
-        """
-        Returns True if job is failed, otherwise False.
-
-        :rtype bool
-        """
-        if self.job.get_async_status() == 'Job Failed':
-            return True
-
-        return False
-
-    def get_report_run_id(self):
-        return self._data.get('report_run_id')
 
 
 class AsyncAioJobIterator(AioEdgeIterator):
