@@ -55,6 +55,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
         self._futures = {}
         """:type: dict[int, facebookads.asyncobjects.AioEdgeIterator]"""
         self._futures_ordered = []
+        """:type: list[facebookads.asyncobjects.AioEdgeIterator]"""
 
     @classmethod
     def init(cls, app_id=None, app_secret=None, access_token=None,

@@ -1086,11 +1086,25 @@ class AsyncAioJobIterator(AioEdgeIterator):
         # To force an async response from an edge, do a POST instead of GET.
         # The response comes in the format of an AsyncAioJob which
         # indicates the progress of the async request.
-        response = self._source_object.get_api_assured().call(
-            'POST',
-            (self._source_object.get_id_assured(), self._target_objects_class.get_endpoint()),
-            params=self.params,
-        ).json()
+        response = {}
+        for i in range(4):
+            # TODO: refactor this into async schema like in regular AioEdgeIterator
+            try:
+                response = self._source_object.get_api_assured().call(
+                    'POST',
+                    (self._source_object.get_id_assured(), self._target_objects_class.get_endpoint()),
+                    params=self.params,
+                ).json()
+            except FacebookRequestError as exc:
+                if i < 3 and exc.api_error_code() in [FacebookErrorCodes.unknown,
+                                                      FacebookErrorCodes.temporary]:
+                    time.sleep(15 + i * 30)
+                elif i < 3 and exc.api_error_code() == FacebookErrorCodes.rate_limit:
+                    time.sleep(60 + i * 60)
+                else:
+                    raise exc
+            else:
+                break
 
         self.job_started_at = time.time()
         self.attempt += 1
