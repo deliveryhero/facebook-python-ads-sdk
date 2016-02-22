@@ -84,7 +84,6 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         self.tmp_retries = 25
         self.unknown_retries = 30
         self.too_much_data_retries = 14
-        self.pause_min = 0.5
 
     def __getitem__(self, index):
         if not self._queue:
@@ -346,7 +345,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
             self.set_fatal_error(exc, err_type)
         else:
             self.set_non_fatal_error(exc, err_type)
-            self.delay_next_call_for = 5 + 5 * self.errors_streak
+            self.delay_next_call_for = 5 + 10 * self.errors_streak
             self.change_the_next_page_limit()
 
     def recover_too_much_data_error(self, exc):
@@ -363,7 +362,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
             self.set_fatal_error(exc, err_type)
         else:
             self.set_non_fatal_error(exc, err_type)
-            self.delay_next_call_for = 5 + self.pause_min * self.errors_streak
+            self.delay_next_call_for = 10 + 15 * self.errors_streak
             self.change_the_next_page_limit()
 
     def recover_rate_limit_error(self, exc):
@@ -1173,17 +1172,24 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.job_started_at, self.attempt,
                     self.params, str(self.job)))
 
-                raise JobFailedException("job id {} failed, failed attempts {}, "
-                                         "job requested at {}, attempts made {}, "
-                                         "report params: {}, response: '{}'".format(
-                    self.job_id, self.failed_attempt,
-                    self.job_started_at, self.attempt,
-                    self.params, str(self.job)))
+                if self.attempt > 4:
+                    # we make 5 attempts to get the data and only the we fail
+                    raise JobFailedException("job id {} failed, failed attempts {}, "
+                                             "job requested at {}, attempts made {}, "
+                                             "report params: {}, response: '{}'".format(
+                        self.job_id, self.failed_attempt,
+                        self.job_started_at, self.attempt,
+                        self.params, str(self.job)))
 
-            # job check says that it's failed but really it may be still running
-            # we just need to recheck it's status in several seconds
-            time.sleep(0.5 + 1 * self.failed_attempt)
-            self.failed_attempt += 1
+                # if we haven't made 5 attempts, we need to reissue the query
+                time.sleep(15 + self.attempt * 20)
+                self.launch_job()
+
+            else:
+                # job check says that it's failed but really it may be still running
+                # we just need to recheck it's status in several seconds
+                time.sleep(0.5 + 1 * self.failed_attempt)
+                self.failed_attempt += 1
 
         elif async_status == "Job Not Started":
             if time.time() - self.job_started_at > self.not_started_timeout:
