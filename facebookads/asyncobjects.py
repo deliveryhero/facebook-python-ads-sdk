@@ -1161,6 +1161,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                          "report params: {}".format(self.job_id, self, str(self.job), self.params))
 
             # create new job and wait for it to complete
+            time.sleep(10 + 20 * self.failed_attempt)
             self.launch_job()
 
         elif async_status == 'Job Failed':
@@ -1206,6 +1207,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                         self.job_id, self.job_started_at, self.attempt,
                         self.params, str(self.job)))
 
+                time.sleep(10 + 20 * self.failed_attempt)
                 self.launch_job()
 
         else:
@@ -1226,6 +1228,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.params, str(self.job)))
 
                 # create new job and wait for it to complete
+                time.sleep(10 + 20 * self.failed_attempt)
                 self.launch_job()
 
         if self.job_previous_completion_value != current_job_completion_value:
