@@ -1,6 +1,8 @@
 import time
 import random
 import logging
+from datetime import datetime
+
 import facebookads.objects as baseobjects
 from facebookads.asyncapi import FacebookAdsAsyncApi
 from facebookads.exceptions import (FacebookRequestError,
@@ -1058,6 +1060,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                                                   include_summary=include_summary, limit=limit)
         self.job = None
         self.failed_attempt = 0
+        self.failed_with_unsupported_request = 0
         self.attempt = 0
         self.request_issued = None
         self.job_id = None
@@ -1137,10 +1140,28 @@ class AsyncAioJobIterator(AioEdgeIterator):
         of class AioEdgeIterator.
         """
         # TODO: change it to 20 when we paralellize initial insights download
-        if self.job_last_checked and time.time() - self.job_last_checked < 12:
+        if self.job_last_checked and time.time() - self.job_last_checked < 15:
             return self
 
-        self.job.remote_read()
+        try:
+            self.job.remote_read()
+        except FacebookRequestError as exc:
+            if exc.api_error_code() == FacebookErrorCodes.unsupported_request and \
+                    self.failed_with_unsupported_request < 3:
+                logger.warn("job id {} recieved unsupported request error,"
+                            "attempts failed with the error {}, job requested at {}, "
+                            "report params: {}, response: '{}'".format(
+                    self.job_id, self.failed_with_unsupported_request,
+                    datetime.fromtimestamp(self.job_started_at),
+                    self.params, str(self.job)))
+                self.failed_with_unsupported_request += 1
+                return self
+            raise JobFailedException("job id {} recieved unsupported request error,"
+                            "attempts failed with the error {}, job requested at {}, "
+                            "report params: {}, response: '{}'".format(
+                self.job_id, self.failed_with_unsupported_request,
+                datetime.fromtimestamp(self.job_started_at),
+                self.params, str(self.job)))
         async_status = self.job.get_async_status()
 
         self.job_last_checked = time.time()
@@ -1170,7 +1191,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                             "job requested at {}, attempts made {}, "
                             "report params: {}, response: '{}'".format(
                     self.job_id, self.failed_attempt,
-                    self.job_started_at, self.attempt,
+                    datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
                 if self.attempt > 4:
@@ -1179,7 +1200,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                                              "job requested at {}, attempts made {}, "
                                              "report params: {}, response: '{}'".format(
                         self.job_id, self.failed_attempt,
-                        self.job_started_at, self.attempt,
+                        datetime.fromtimestamp(self.job_started_at), self.attempt,
                         self.params, str(self.job)))
 
                 # if we haven't made 5 attempts, we need to reissue the query
@@ -1197,15 +1218,15 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 logger.warn("job id {} is not started yet, "
                             "job requested at {}, attempts made {}, "
                             "report params: {}, response: '{}'".format(
-                    self.job_id, self.job_started_at, self.attempt,
-                    self.params, str(self.job)))
+                    self.job_id, datetime.fromtimestamp(self.job_started_at),
+                    self.attempt, self.params, str(self.job)))
 
                 if self.attempt > 2:
                     raise JobFailedException("job id {} is not started yet, "
                                              "job requested at {}, attempts made {}, "
                                              "report params: {}, response: '{}'".format(
-                        self.job_id, self.job_started_at, self.attempt,
-                        self.params, str(self.job)))
+                        self.job_id, datetime.fromtimestamp(self.job_started_at),
+                        self.attempt, self.params, str(self.job)))
 
                 time.sleep(10 + 20 * self.failed_attempt)
                 self.launch_job()
@@ -1216,7 +1237,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                             "job requested at {}, attempts made {}, "
                             "report params: {}, response: '{}'".format(
                     self.job_id, current_job_completion_value,
-                    self.job_started_at, self.attempt,
+                    datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
                 if self.attempt > 5:
@@ -1224,7 +1245,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                             "job requested at {}, attempts made {}, "
                             "report params: {}, response: '{}'".format(
                     self.job_id, current_job_completion_value,
-                    self.job_started_at, self.attempt,
+                    datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
                 # create new job and wait for it to complete
