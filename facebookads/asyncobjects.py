@@ -1155,6 +1155,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at),
                     self.params, str(self.job)))
                 self.failed_with_unsupported_request += 1
+                time.sleep(6)
+                self.job_last_checked = time.time()
                 return self
             raise JobFailedException("job id {} recieved unsupported request error,"
                             "attempts failed with the error {}, job requested at {}, "
