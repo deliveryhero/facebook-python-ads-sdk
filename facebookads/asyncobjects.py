@@ -1052,7 +1052,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
     def __init__(self, source_object, target_objects_class,
                  fields=None, params=None, include_summary=True,
                  limit=500, stage='async_get_job',
-                 no_progress_timeout=600, not_started_timeout=1800,
+                 no_progress_timeout=1200, not_started_timeout=1800,
                  has_action=None, needs_action_device=None):
 
         super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
