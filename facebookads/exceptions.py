@@ -26,6 +26,8 @@ raised by the sdk.
 import json
 import re
 
+from facebookads.utils.fberrcodes import FacebookErrorCodes
+
 
 class FacebookError(Exception):
     """
@@ -85,20 +87,26 @@ class FacebookRequestError(FacebookError):
             request = self._request_context.copy()
             del request['files']
 
-        super(FacebookRequestError, self).__init__(
-            "\n\n" +
-            "  Message: %s\n" % self._message +
-            "  Method:  %s\n" % request.get('method') +
-            "  Path:    %s\n" % request.get('path', '/') +
-            "  Params:  %s\n" % request.get('params') +
-            "\n" +
-            "  Status:  %s\n" % self._http_status +
-            "  Response:\n    %s" % re.sub(
-                r"\n", "\n    ",
-                json.dumps(self._body, indent=2)
-            ) +
-            "\n"
-        )
+        if self._api_error_code and FacebookErrorCodes.unsupported_request == self._api_error_code:
+            super(FacebookRequestError, self).__init__(
+                "Unsupported Request, Facebook error: %s, method: %s, path: %s, params: %s" %
+                (self._message, request.get('method'), request.get('path', '/'), request.get('params'))
+            )
+        else:
+            super(FacebookRequestError, self).__init__(
+                "\n\n" +
+                "  Message: %s\n" % self._message +
+                "  Method:  %s\n" % request.get('method') +
+                "  Path:    %s\n" % request.get('path', '/') +
+                "  Params:  %s\n" % request.get('params') +
+                "\n" +
+                "  Status:  %s\n" % self._http_status +
+                "  Response:\n    %s" % re.sub(
+                    r"\n", "\n    ",
+                    json.dumps(self._body, indent=2)
+                ) +
+                "\n"
+            )
 
     def request_context(self):
         return self._request_context
