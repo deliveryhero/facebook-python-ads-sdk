@@ -1196,8 +1196,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
-                if self.attempt > 4:
-                    # we make 5 attempts to get the data and only the we fail
+                if self.attempt > 2:
+                    # we make 3 attempts to get the data and only then fail
                     raise JobFailedException("job id {} failed, failed attempts {}, "
                                              "job requested at {}, attempts made {}, "
                                              "report params: {}, response: '{}'".format(
@@ -1205,14 +1205,14 @@ class AsyncAioJobIterator(AioEdgeIterator):
                         datetime.fromtimestamp(self.job_started_at), self.attempt,
                         self.params, str(self.job)))
 
-                # if we haven't made 5 attempts, we need to reissue the query
-                time.sleep(15 + self.attempt * 20)
+                # if we haven't made 3 attempts, we need to reissue the query
+                time.sleep(60 + self.attempt * 240)
                 self.launch_job()
 
             else:
                 # job check says that it's failed but really it may be still running
                 # we just need to recheck it's status in several seconds
-                time.sleep(0.5 + 1 * self.failed_attempt)
+                time.sleep(1 + 2 * self.failed_attempt)
                 self.failed_attempt += 1
 
         elif async_status == "Job Not Started":
