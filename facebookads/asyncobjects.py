@@ -1061,6 +1061,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.job = None
         self.failed_attempt = 0
         self.failed_with_unsupported_request = 0
+        self.failed_with_unknown_error = 0
         self.attempt = 0
         self.request_issued = None
         self.job_id = None
@@ -1154,10 +1155,25 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at),
                     self.params, str(self.job)))
 
+                time.sleep(3 + 3 * self.failed_with_unsupported_request)
                 self.failed_with_unsupported_request += 1
-                time.sleep(6)
                 self.job_last_checked = time.time()
                 return self
+
+            elif exc.api_error_code() == FacebookErrorCodes.unknown and \
+                    self.failed_with_unknown_error < 3:
+                logger.warn("job id {} recieved unknown error,"
+                            "attempts failed with the error {}, job requested at {}, "
+                            "report params: {}, response: '{}'".format(
+                    self.job_id, self.failed_with_unknown_error,
+                    datetime.fromtimestamp(self.job_started_at),
+                    self.params, str(self.job)))
+
+                time.sleep(5 + 2 * self.failed_with_unknown_error)
+                self.failed_with_unknown_error += 1
+                self.job_last_checked = time.time()
+                return self
+
             raise JobFailedException("job id {} recieved unsupported request error,"
                             "attempts failed with the error {}, job requested at {}, "
                             "report params: {}, response: '{}'".format(
