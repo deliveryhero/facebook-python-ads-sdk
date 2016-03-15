@@ -1052,7 +1052,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
     def __init__(self, source_object, target_objects_class,
                  fields=None, params=None, include_summary=True,
                  limit=500, stage='async_get_job',
-                 no_progress_timeout=1200, not_started_timeout=1800,
+                 no_progress_timeout=900, not_started_timeout=1200,
                  has_action=None, needs_action_device=None):
 
         super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
@@ -1139,7 +1139,6 @@ class AsyncAioJobIterator(AioEdgeIterator):
         Returns self if the results are not ready, otherwise returns iterator by results
         of class AioEdgeIterator.
         """
-        # TODO: change it to 20 when we paralellize initial insights download
         if self.job_last_checked and time.time() - self.job_last_checked < 15:
             return self
 
@@ -1154,6 +1153,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.job_id, self.failed_with_unsupported_request,
                     datetime.fromtimestamp(self.job_started_at),
                     self.params, str(self.job)))
+
                 self.failed_with_unsupported_request += 1
                 time.sleep(6)
                 self.job_last_checked = time.time()
@@ -1179,16 +1179,16 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 results_iterator = self.job.get_result(limit=self.limit)
                 return results_iterator
 
-            elif self.attempt > 8:
+            elif self.attempt >= 5:
                 raise JobFailedException("job id {} failed for {}, reason unknown, response: {}, "
                          "report params: {}".format(self.job_id, self, str(self.job), self.params))
 
             # create new job and wait for it to complete
-            time.sleep(10 + 20 * self.failed_attempt)
+            time.sleep(10 + 10 * self.failed_attempt)
             self.launch_job()
 
         elif async_status == 'Job Failed':
-            if self.failed_attempt > 3:
+            if self.failed_attempt >= 4:
                 logger.warn("job id {} failed, failed attempts {}, "
                             "job requested at {}, attempts made {}, "
                             "report params: {}, response: '{}'".format(
@@ -1196,8 +1196,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
-                if self.attempt > 2:
-                    # we make 3 attempts to get the data and only then fail
+                if self.attempt >= 5:
+                    # we make 5 attempts to get the data and only then fail
                     raise JobFailedException("job id {} failed, failed attempts {}, "
                                              "job requested at {}, attempts made {}, "
                                              "report params: {}, response: '{}'".format(
@@ -1206,7 +1206,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                         self.params, str(self.job)))
 
                 # if we haven't made 3 attempts, we need to reissue the query
-                time.sleep(60 + self.attempt * 240)
+                time.sleep(20 + self.attempt * 90)
                 self.launch_job()
 
             else:
@@ -1223,14 +1223,14 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.job_id, datetime.fromtimestamp(self.job_started_at),
                     self.attempt, self.params, str(self.job)))
 
-                if self.attempt > 2:
+                if self.attempt >= 4:
                     raise JobFailedException("job id {} is not started yet, "
                                              "job requested at {}, attempts made {}, "
                                              "report params: {}, response: '{}'".format(
                         self.job_id, datetime.fromtimestamp(self.job_started_at),
                         self.attempt, self.params, str(self.job)))
 
-                time.sleep(10 + 20 * self.failed_attempt)
+                time.sleep(10 + 10 * self.failed_attempt)
                 self.launch_job()
 
         else:
@@ -1242,7 +1242,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
-                if self.attempt > 5:
+                if self.attempt >= 5:
                     raise JobFailedException("job id {} stuck, completion {}, "
                             "job requested at {}, attempts made {}, "
                             "report params: {}, response: '{}'".format(
@@ -1251,7 +1251,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.params, str(self.job)))
 
                 # create new job and wait for it to complete
-                time.sleep(10 + 20 * self.failed_attempt)
+                time.sleep(10 + 10 * self.failed_attempt)
                 self.launch_job()
 
         if self.job_previous_completion_value != current_job_completion_value:
