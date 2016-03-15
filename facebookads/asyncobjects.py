@@ -9,6 +9,7 @@ from facebookads.exceptions import (FacebookRequestError,
     FacebookUnavailablePropertyException, JobFailedException)
 from facebookads.utils.fberrcodes import FacebookErrorCodes
 
+from six import string_types, text_type, binary_type
 try:
     from urlparse import parse_qsl, urlparse, urlunsplit
     from urllib import urlencode
@@ -287,8 +288,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         If request is failed, submits next page, otherwise
         finishes iterations and sets the number of success streaks as 0.
         """
-        self.is_exception_fatal(response)
-        if not self._request_failed:
+        if not self.is_exception_fatal(response):
             self.submit_next_page_aio()
         else:
             self._finished_iteration = True
@@ -314,7 +314,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
             else:
                 self.recover_other_graph_error(exc)
         else:
-            if resp.body() and not resp.json():
+            if resp.body() and isinstance(resp.json(), (string_types, text_type, binary_type)):
                 self.recover_tmp_error(exc)
             else:
                 self.set_fatal_error(exc)
