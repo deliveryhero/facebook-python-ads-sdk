@@ -55,10 +55,12 @@ class FacebookRequestError(FacebookError):
         self._request_context = request_context
         self._http_status = http_status
         self._http_headers = http_headers
+        self._is_body_json = True
         try:
             self._body = json.loads(body)
         except (TypeError, ValueError):
             self._body = body
+            self._is_body_json = False
 
         self._api_error_code = None
         self._api_error_type = None
@@ -119,6 +121,9 @@ class FacebookRequestError(FacebookError):
 
     def body(self):
         return self._body
+
+    def is_body_json(self):
+        return self._is_body_json
 
     def api_error_message(self):
         return self._api_error_message

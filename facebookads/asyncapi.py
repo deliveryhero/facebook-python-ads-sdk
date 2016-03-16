@@ -2,9 +2,13 @@ from __future__ import unicode_literals, absolute_import, print_function
 import re
 import six
 import time
+import ujson
 import logging
+import collections
 import concurrent.futures
 import threading
+# noinspection PyUnresolvedReferences
+from six.moves import http_client
 
 from facebookads.exceptions import FacebookCallFailedError, FacebookBadObjectError
 from facebookads.api import FacebookSession, FacebookResponse, \
@@ -20,9 +24,42 @@ class FacebookAsyncResponse(FacebookResponse):
     def __init__(self, body=None, http_status=None, headers=None, call=None, error=None):
         super(FacebookAsyncResponse, self).__init__(body, http_status, headers, call)
         self._error = error
+        self._json_body = None
+
+    def json(self):
+        """Returns the response body -- in json if possible."""
+        if self._json_body:
+            return self._json_body
+
+        try:
+            self._json_body = ujson.loads(self._body)
+            return self._json_body
+        except (TypeError, ValueError):
+            self._json_body = None
+            return self._body
 
     def is_success(self):
-        return not bool(self._error) and super(FacebookAsyncResponse, self).is_success()
+        self.json()
+
+        if isinstance(self._json_body, collections.Mapping) and 'error' in self._json_body:
+            # Is a dictionary, has error in it
+            return False
+        elif self._http_status not in (http_client.NOT_MODIFIED, http_client.OK):
+            return False
+        elif bool(self._json_body):
+            # Has body and no error
+            if 'success' in self._json_body:
+                return not bool(self._error) and self._json_body['success']
+            return not bool(self._error)
+        elif self._http_status == http_client.NOT_MODIFIED:
+            # ETAG Hit
+            return not bool(self._error)
+        elif self._http_status == http_client.OK:
+            # HTTP Okay
+            return not bool(self._error)
+        else:
+            # Something else
+            return False
 
     def error(self):
         """

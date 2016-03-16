@@ -244,6 +244,10 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
             elif int(time.time() - self.last_yield) > 600:
                 # running for too long
                 self.future_timed_out()
+                if self.errors_streak >= 5:
+                    return self
+                self.last_yield = time.time()
+                self.recover_tmp_error(self.last_error)
             else:
                 # just running
                 self._request_failed = False
@@ -303,14 +307,16 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         """
         exc = resp.error()
         if isinstance(exc, FacebookRequestError):
-            if exc._api_error_code == FacebookErrorCodes.temporary:
+            if exc.api_error_code() == FacebookErrorCodes.temporary:
                 self.recover_tmp_error(exc)
-            elif exc._api_error_code == FacebookErrorCodes.unknown:
+            elif exc.api_error_code() == FacebookErrorCodes.unknown:
                 self.recover_unknown_error(exc)
-            elif exc._api_error_code == FacebookErrorCodes.too_much_data:
+            elif exc.api_error_code() == FacebookErrorCodes.too_much_data:
                 self.recover_too_much_data_error(exc)
-            elif exc._api_error_code == FacebookErrorCodes.rate_limit:
+            elif exc.api_error_code() == FacebookErrorCodes.rate_limit:
                 self.recover_rate_limit_error(exc)
+            elif not exc.is_body_json():
+                self.recover_tmp_error(exc)
             else:
                 self.recover_other_graph_error(exc)
         else:
@@ -1090,7 +1096,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         # The response comes in the format of an AsyncAioJob which
         # indicates the progress of the async request.
         response = {}
-        for i in range(4):
+        for i in range(5):
             # TODO: refactor this into async schema like in regular AioEdgeIterator
             try:
                 response = self._source_object.get_api_assured().call(
@@ -1099,10 +1105,11 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     params=self.params,
                 ).json()
             except FacebookRequestError as exc:
-                if i < 3 and exc.api_error_code() in [FacebookErrorCodes.unknown,
-                                                      FacebookErrorCodes.temporary]:
-                    time.sleep(15 + i * 30)
-                elif i < 3 and exc.api_error_code() == FacebookErrorCodes.rate_limit:
+                if i < 4 and (exc.api_error_code() in [FacebookErrorCodes.unknown,
+                                                       FacebookErrorCodes.temporary] or
+                              not exc.is_body_json()):
+                    time.sleep(15 + i * 15)
+                elif i < 4 and exc.api_error_code() == FacebookErrorCodes.rate_limit:
                     time.sleep(60 + i * 60)
                 else:
                     raise exc
@@ -1143,6 +1150,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         if self.job_last_checked and time.time() - self.job_last_checked < 15:
             return self
 
+        # TODO: refactor this into async schema like in regular AioEdgeIterator
         try:
             self.job.remote_read()
         except FacebookRequestError as exc:
@@ -1160,8 +1168,9 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 self.job_last_checked = time.time()
                 return self
 
-            elif exc.api_error_code() == FacebookErrorCodes.unknown and \
-                    self.failed_with_unknown_error < 3:
+            elif (exc.api_error_code() in (FacebookErrorCodes.unknown, 2601,
+                                           FacebookErrorCodes.temporary) or
+                      not exc.is_body_json()) and self.failed_with_unknown_error < 4:
                 logger.warn("job id {} recieved unknown error,"
                             "attempts failed with the error {}, job requested at {}, "
                             "report params: {}, response: '{}'".format(
