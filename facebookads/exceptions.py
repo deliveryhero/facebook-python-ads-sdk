@@ -66,6 +66,7 @@ class FacebookRequestError(FacebookError):
         self._api_error_type = None
         self._api_error_message = None
         self._api_blame_field_specs = None
+        self._api_transient_error = False
 
         if self._body and 'error' in self._body:
             self._error = self._body['error']
@@ -73,6 +74,8 @@ class FacebookRequestError(FacebookError):
                 self._api_error_message = self._error['message']
             if 'code' in self._error:
                 self._api_error_code = self._error['code']
+            if 'is_transient' in self._error:
+                self._api_transient_error = self._error['is_transient']
             if 'error_subcode' in self._error:
                 self._api_error_subcode = self._error['error_subcode']
             if 'type' in self._error:
@@ -140,6 +143,12 @@ class FacebookRequestError(FacebookError):
     def api_blame_field_specs(self):
         return self._api_blame_field_specs
 
+    def api_transient_error(self):
+        return self._api_transient_error
+
+    def get_message(self):
+        return self._message
+
 
 class FacebookCallFailedError(FacebookError):
     """
@@ -175,3 +184,12 @@ class FacebookUnavailablePropertyException(FacebookError):
 
 class JobFailedException(FacebookError):
     pass
+
+
+class DocsmithSkipTestError(Exception):
+    """Raised when a docsmith test is skipped."""
+    def __init__(self, message):
+        self._message = message
+
+    def get_skip_error_msg(self):
+        return self._message
