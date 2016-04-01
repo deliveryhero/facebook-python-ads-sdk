@@ -318,7 +318,8 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
                 self.recover_too_much_data_error(exc)
             elif exc.api_error_code() == FacebookErrorCodes.rate_limit:
                 self.recover_rate_limit_error(exc)
-            elif not exc.is_body_json():
+            elif not exc.is_body_json() or \
+                    exc.api_error_code() == FacebookErrorCodes.report_cannot_be_accessed:
                 self.recover_tmp_error(exc)
             else:
                 self.recover_other_graph_error(exc)

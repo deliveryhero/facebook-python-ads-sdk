@@ -9,3 +9,4 @@ class FacebookErrorCodes(object):
     unsupported_request = 100
     too_much_data = -3
     not_on_white_list = 1487654
+    report_cannot_be_accessed = 2601
