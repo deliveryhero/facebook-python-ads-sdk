@@ -94,6 +94,9 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         return self._queue[index]
 
     def get_all_results(self):
+        """
+        :rtype: list[dict]
+        """
         return self._queue
 
     # AIO-based page loader
