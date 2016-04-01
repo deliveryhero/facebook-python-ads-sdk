@@ -313,7 +313,10 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
             if exc.api_error_code() == FacebookErrorCodes.temporary:
                 self.recover_tmp_error(exc)
             elif exc.api_error_code() == FacebookErrorCodes.unknown:
-                self.recover_unknown_error(exc)
+                if exc.api_error_message().find("educe the amount of data") > 0:
+                    self.recover_too_much_data_error(exc)
+                else:
+                    self.recover_unknown_error(exc)
             elif exc.api_error_code() == FacebookErrorCodes.too_much_data:
                 self.recover_too_much_data_error(exc)
             elif exc.api_error_code() == FacebookErrorCodes.rate_limit:
