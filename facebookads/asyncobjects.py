@@ -582,33 +582,33 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
 
     def get_ad_users_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdUser's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdUser, fields, params, limit=limit)
+        return self.iterate_edge_aio(AdUser, fields, params, limit=limit)
 
     def get_campaigns_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over Campaign's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.Campaign, fields, params, limit=limit)
+        return self.iterate_edge_aio(Campaign, fields, params, limit=limit)
 
     def get_ad_sets_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdSet's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdSet, fields, params, limit=limit)
+        return self.iterate_edge_aio(AdSet, fields, params, limit=limit)
 
     def get_ads_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over Ad's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.Ad, fields, params, limit=limit)
+        return self.iterate_edge_aio(Ad, fields, params, limit=limit)
 
     def get_ad_conversion_pixels_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over AdConversionPixels associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.AdConversionPixel, fields, params, limit=limit)
+        return self.iterate_edge_aio(AdConversionPixel, fields, params, limit=limit)
 
     def get_ad_creatives_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdCreative's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdCreative, fields, params, limit=limit)
+        return self.iterate_edge_aio(AdCreative, fields, params, limit=limit)
 
     def get_ad_images_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over AdImage's associated with this account."""
-        return self.iterate_edge_aio(baseobjects.AdImage, fields, params, limit=limit)
+        return self.iterate_edge_aio(AdImage, fields, params, limit=limit)
 
     def get_broad_category_targeting_aio(self, fields=None, params=None, limit=1000):
         """
@@ -627,13 +627,13 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         """
         Returns iterator over CustomAudience's associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.CustomAudience, fields, params, limit=limit)
+        return self.iterate_edge_aio(CustomAudience, fields, params, limit=limit)
 
     def get_partner_categories_aio(self, fields=None, params=None, limit=1000):
         """
         Returns iterator over PartnerCategory's associated with this account.
         """
-        return self.iterate_edge_aio(baseobjects.PartnerCategory, fields, params, limit=limit)
+        return self.iterate_edge_aio(PartnerCategory, fields, params, limit=limit)
 
     def get_rate_cards_aio(self, fields=None, params=None, limit=1000):
         """Returns iterator over RateCard's associated with this account."""
