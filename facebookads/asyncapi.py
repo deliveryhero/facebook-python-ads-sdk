@@ -327,7 +327,7 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
         :rtype: list[facebookads.asyncobjects.AioEdgeIterator]
         """
         time.sleep(0.02)
-        cnt, other_types_cnt = 0, 0
+        cnt, required_type_cnt = 0, 0
         while True:
             cnt += 1
             edge_iter = self.pop_one_from_futures()
@@ -341,19 +341,22 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
             if edge_iter._page_ready and edge_iter._finished_iteration:
                 # loaded all the data
                 if edge_iter._target_objects_class == target_objects_class:
+                    required_type_cnt += 1
                     yield edge_iter
                 else:
-                    other_types_cnt += 1
                     self.put_in_futures(edge_iter)
 
             else:
                 if edge_iter._request_failed:
                     # request failed unrecoverably
                     if edge_iter._target_objects_class == target_objects_class:
+                        required_type_cnt += 1
                         yield edge_iter
                     else:
                         self.put_in_futures(edge_iter)
                 else:
+                    if edge_iter._target_objects_class == target_objects_class:
+                        required_type_cnt += 1
                     # some more loading needs to be done
                     edge_iter.submit_next_page_aio()
                     self.put_in_futures(edge_iter)
@@ -361,8 +364,8 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
             # checked on all tasks in queue
             if cnt >= len(self._futures):
                 # we've yielded all objects of target_objects_class type
-                if other_types_cnt >= len(self._futures):
+                if required_type_cnt <= 0:
                     break
                 cnt = 0
-                other_types_cnt = 0
+                required_type_cnt = 0
                 time.sleep(0.5)

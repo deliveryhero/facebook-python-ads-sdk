@@ -1916,8 +1916,6 @@ class AdVideo(AbstractCrudObject):
         """
         if self.Field.slideshow_spec in self:
             request = VideoUploadRequest(self.get_api_assured())
-            spec = self[self.Field.slideshow_spec]
-            print(spec)
             request.setParams(params={'slideshow_spec': {
                 'images_urls': self[self.Field.slideshow_spec]['images_urls'],
                 'duration_ms': self[self.Field.slideshow_spec]['duration_ms'],
