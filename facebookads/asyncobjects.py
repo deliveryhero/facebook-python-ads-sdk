@@ -5,7 +5,7 @@ from datetime import datetime
 
 import facebookads.objects as baseobjects
 from facebookads.asyncapi import FacebookAdsAsyncApi
-from facebookads.exceptions import (FacebookRequestError,
+from facebookads.exceptions import (FacebookRequestError, FacebookApiTimeout,
     FacebookUnavailablePropertyException, JobFailedException)
 from facebookads.utils.fberrcodes import FacebookErrorCodes
 
@@ -263,7 +263,7 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         logger.warn("request {} stuck, time: {}, endpoint: {}, params: {}".format(
             str(self._future), int(time.time() - self.last_yield),
             str(self._path), self.params))
-        self.last_error = Exception(
+        self.last_error = FacebookApiTimeout(
             "request {} stuck, time: {}, endpoint: {}, params: {}".format(
                 str(self._future), int(time.time() - self.last_yield),
                 str(self._path), self.params))

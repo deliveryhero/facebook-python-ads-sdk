@@ -182,6 +182,11 @@ class FacebookUnavailablePropertyException(FacebookError):
     pass
 
 
+class FacebookApiTimeout(FacebookError):
+    """Raised when async request timed out."""
+    pass
+
+
 class JobFailedException(FacebookError):
     pass
 
