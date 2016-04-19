@@ -745,12 +745,23 @@ class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
         """Returns iterator over Ad's associated with this campaign."""
         return self.iterate_edge_aio(Ad, fields, params, limit=limit)
 
-    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False,
+                         has_action=None, needs_action_device=None):
+        """
+        If async is False, returns EdgeIterator.
+
+        If async is True, creates a job and job iterator for it and
+        returns the job iterator (AsyncAioJobIterator class, subclass of EdgeIterator).
+
+        Regardless the async parameter, it puts the iterator to the queue so that
+        the results of execution are later available  through
+        FacebookAdsAsyncApi.get_default_api().get_all_async_results() call.
+        """
         if async:
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params, limit=limit
+                params, has_action, needs_action_device, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
@@ -769,12 +780,23 @@ class AdSet(AbstractCrudAioObject, baseobjects.AdSet):
         """Returns iterator over AdCreative's associated with this set."""
         return self.iterate_edge_aio(AdCreative, fields, params, limit=limit)
 
-    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False,
+                         has_action=None, needs_action_device=None):
+        """
+        If async is False, returns EdgeIterator.
+
+        If async is True, creates a job and job iterator for it and
+        returns the job iterator (AsyncAioJobIterator class, subclass of EdgeIterator).
+
+        Regardless the async parameter, it puts the iterator to the queue so that
+        the results of execution are later available  through
+        FacebookAdsAsyncApi.get_default_api().get_all_async_results() call.
+        """
         if async:
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params, limit=limit
+                params, has_action, needs_action_device, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
@@ -869,12 +891,23 @@ class Ad(AbstractCrudAioObject, baseobjects.Ad):
         """
         return self.iterate_edge_aio(Lead, fields, params, limit=limit)
 
-    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False):
+    def get_insights_aio(self, fields=None, params=None, limit=1000, async=False,
+                         has_action=None, needs_action_device=None):
+        """
+        If async is False, returns EdgeIterator.
+
+        If async is True, creates a job and job iterator for it and
+        returns the job iterator (AsyncAioJobIterator class, subclass of EdgeIterator).
+
+        Regardless the async parameter, it puts the iterator to the queue so that
+        the results of execution are later available  through
+        FacebookAdsAsyncApi.get_default_api().get_all_async_results() call.
+        """
         if async:
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params, limit=limit
+                params, has_action, needs_action_device, limit=limit
             )
         return self.iterate_edge_aio(
             Insights,
