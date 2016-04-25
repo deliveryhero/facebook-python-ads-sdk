@@ -2727,6 +2727,13 @@ class Business(CannotCreate, CannotDelete, AbstractCrudObject):
             include_summary=False,
         )
 
+    def get_order_id_attributions(self, fields=None, params=None):
+        return self.iterate_edge_async(
+            OrderIdAttributions,
+            fields,
+            params
+        )
+
 
 class ProductCatalog(AbstractCrudObject):
     """
@@ -3442,3 +3449,19 @@ class CustomConversion(CannotDelete, AbstractCrudObject):
     @classmethod
     def get_endpoint(cls):
         return 'customconversions'
+
+
+class OrderIdAttributions(CannotCreate, CannotDelete, CannotUpdate, AbstractCrudObject):
+
+    @classmethod
+    def get_endpoint(cls):
+        return 'order_id_attributions'
+
+    class Field(object):
+        id = 'id'
+        order_id = 'order_id'
+        pixel_id = 'pixel_id'
+        order_timestamp = 'order_timestamp'
+        conversion_device = 'conversion_device'
+        attribution_type = 'attribution_type'
+        attributions = 'attributions'
