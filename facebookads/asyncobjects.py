@@ -978,6 +978,20 @@ class Business(AbstractCrudAioObject, baseobjects.Business):
             include_summary=False, limit=limit
         )
 
+    def get_order_id_attributions_aio(self, fields=None, params=None, limit=100, async=False):
+        if async:
+            return self.iterate_edge_async_aio(
+                OrderIdAttributions,
+                fields,
+                params, limit=limit
+            )
+        return self.iterate_edge_aio(
+            OrderIdAttributions,
+            fields,
+            params,
+            include_summary=False, limit=limit
+        )
+
     def get_business_projects_aio(self, fields=None, params=None, limit=50):
         return self.iterate_edge_aio(BusinessProject, fields, params, limit=limit)
 
@@ -1324,3 +1338,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.job_previous_completion_value = current_job_completion_value
         # we need to return self into thread pool and wait for job completion
         return self
+
+
+class OrderIdAttributions(AbstractCrudAioObject, baseobjects.OrderIdAttributions):
+    pass
