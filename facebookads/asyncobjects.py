@@ -219,7 +219,12 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
             del self._future
             self._future = None
 
-            self.delay_next_call_for = 0
+            if self.last_error_type == "rate limit error":
+                self.delay_next_call_for -= 10
+                if self.delay_next_call_for < 0:
+                    self.delay_next_call_for = 0
+            else:
+                self.delay_next_call_for = 0
 
             self.last_yield = time.time()
             if result.is_failure():
