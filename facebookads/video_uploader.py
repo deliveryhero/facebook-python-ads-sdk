@@ -42,7 +42,6 @@ class VideoUploader(object):
     def upload(self, video, wait_for_encoding=False):
         """
         Upload the given video file.
-
         Args:
             video(required): The AdVideo object that will be uploaded
             wait_for_encoding: Whether to wait until encoding is finished.

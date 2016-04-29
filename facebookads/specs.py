@@ -25,90 +25,45 @@ in the Ads API.
 
 from facebookads.objects import AbstractObject
 from facebookads.mixins import ValidatesFields
+from facebookads.adobjects import adcreativeobjectstoryspec
+from facebookads.adobjects import adcreativelinkdatachildattachment
+from facebookads.adobjects import adcreativelinkdata
+from facebookads.adobjects import adcreativeofferdata
+from facebookads.adobjects import adcreativephotodata
+from facebookads.adobjects import adcreativetextdata
+from facebookads.adobjects import adcreativevideodata
 
 
-class ObjectStorySpec(ValidatesFields, AbstractObject):
-    class Field(object):
-        instagram_actor_id = 'instagram_actor_id'
-        link_data = 'link_data'
-        offer_data = 'offer_data'
-        page_id = 'page_id'
-        photo_data = 'photo_data'
-        template_data = 'template_data'
-        text_data = 'text_data'
-        video_data = 'video_data'
+class ObjectStorySpec(adcreativeobjectstoryspec.AdCreativeObjectStorySpec):
+    pass
 
 
-class AttachmentData(ValidatesFields, AbstractObject):
-    class Field(object):
-        call_to_action = 'call_to_action'
-        description = 'description'
-        image_hash = 'image_hash'
-        link = 'link'
-        name = 'name'
-        picture = 'picture'
-        video_id = 'video_id'
+class AttachmentData(adcreativelinkdatachildattachment.AdCreativeLinkDataChildAttachment):
+    pass
 
 
-class LinkData(ValidatesFields, AbstractObject):
-    class Field(object):
-        call_to_action = 'call_to_action'
-        caption = 'caption'
-        child_attachments = 'child_attachments'
-        description = 'description'
-        image_hash = 'image_hash'
-        image_crops = 'image_crops'
-        link = 'link'
-        message = 'message'
-        multi_share_optimized = 'multi_share_optimized'
-        name = 'name'
-        picture = 'picture'
+class LinkData(adcreativelinkdata.AdCreativeLinkData):
+    pass
 
 
-class OfferData(ValidatesFields, AbstractObject):
-    class Field(object):
-        barcode_type = 'barcode_type'
-        barcode = 'barcode'
-        claim_limit = 'claim_limit'
-        coupon_type = 'coupon_type'
-        expiration_time = 'expiration_time'
-        image_url = 'image_url'
-        message = 'message'
-        reminder_time = 'reminder_time'
-        redemption_link = 'redemption_link'
-        redemption_code = 'redemption_code'
-        title = 'title'
+class OfferData(adcreativeofferdata.AdCreativeOfferData):
+    pass
 
 
-class PhotoData(ValidatesFields, AbstractObject):
-    class Field(object):
-        caption = 'caption'
-        url = 'url'
+class PhotoData(adcreativephotodata.AdCreativePhotoData):
+    pass
 
 
-class TemplateData(ValidatesFields, AbstractObject):
-    class Field(object):
-        call_to_action = 'call_to_action'
-        description = 'description'
-        link = 'link'
-        max_product_count = 'max_product_count'
-        message = 'message'
-        name = 'name'
-        picture = 'picture'
+class TemplateData(adcreativelinkdata.AdCreativeLinkData):
+    pass
 
 
-class TextData(ValidatesFields, AbstractObject):
-    class Field(object):
-        message = 'message'
+class TextData(adcreativetextdata.AdCreativeTextData):
+    pass
 
 
-class VideoData(ValidatesFields, AbstractObject):
-    class Field(object):
-        call_to_action = 'call_to_action'
-        description = 'description'
-        image_url = 'image_url'
-        title = 'title'
-        video_id = 'video_id'
+class VideoData(adcreativevideodata.AdCreativeVideoData):
+    pass
 
 
 class SlideshowSpec(ValidatesFields, AbstractObject):

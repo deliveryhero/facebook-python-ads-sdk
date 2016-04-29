@@ -18,23 +18,34 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-"""
-api module contains classes that make http requests to Facebook's graph API.
-"""
+from facebookads.session import FacebookSession
+from facebookads import apiconfig
 
 from facebookads.exceptions import (
     FacebookRequestError,
     FacebookBadObjectError,
+    FacebookUnavailablePropertyException,
+    FacebookBadParameterError,
 )
-from facebookads.session import FacebookSession
+from facebookads.utils import api_utils
 from facebookads.utils import urls
-from facebookads.utils import version
+
+from contextlib import contextmanager
+import copy
+from six.moves import http_client
+import os
 import json
 import six
 import collections
 import re
-from six.moves import http_client
 
+from facebookads.adobjects.objectparser import ObjectParser
+from facebookads.typechecker import TypeChecker
+
+
+"""
+api module contains classes that make http requests to Facebook's graph API.
+"""
 
 class FacebookResponse(object):
 
@@ -42,7 +53,6 @@ class FacebookResponse(object):
 
     def __init__(self, body=None, http_status=None, headers=None, call=None):
         """Initializes the object's internal data.
-
         Args:
             body (optional): The response body as text.
             http_status (optional): The http status code.
@@ -124,7 +134,6 @@ class FacebookResponse(object):
 class FacebookAdsApi(object):
 
     """Encapsulates session attributes and methods to make API calls.
-
     Attributes:
         SDK_VERSION (class): indicating sdk version.
         HTTP_METHOD_GET (class): HTTP GET method name.
@@ -134,9 +143,9 @@ class FacebookAdsApi(object):
             this sdk.
     """
 
-    SDK_VERSION = version.get_version()
+    SDK_VERSION = apiconfig.ads_api_config['SDK_VERSION']
 
-    API_VERSION = 'v' + str(re.sub('^(\d+\.\d+)\.\d+$', '\g<1>', SDK_VERSION))
+    API_VERSION = apiconfig.ads_api_config['API_VERSION']
 
     HTTP_METHOD_GET = 'GET'
 
@@ -153,7 +162,6 @@ class FacebookAdsApi(object):
 
     def __init__(self, session):
         """Initializes the api instance.
-
         Args:
             session: FacebookSession object that contains a requests interface
                 and attribute GRAPH (the Facebook GRAPH API URL).
@@ -187,14 +195,13 @@ class FacebookAdsApi(object):
 
         if account_id:
             cls.set_default_account_id(account_id)
+        return api
 
     @classmethod
     def set_default_api(cls, api_instance):
         """Sets the default api instance.
-
         When making calls to the api, objects will revert to using the default
         api if one is not specified when initializing the objects.
-
         Args:
             api_instance: The instance which to set as default.
         """
@@ -230,7 +237,6 @@ class FacebookAdsApi(object):
         api_version=None,
     ):
         """Makes an API call.
-
         Args:
             method: The HTTP method name (e.g. 'GET').
             path: A tuple of path tokens or a full URL string. A tuple will
@@ -245,11 +251,9 @@ class FacebookAdsApi(object):
                 header name and its value is the header value.
             files (optional): An optional mapping of file names to binary open
                 file objects. These files will be attached to the request.
-
         Returns:
             A FacebookResponse object containing the response body, headers,
             http status, and summary of the call that was made.
-
         Raises:
             FacebookResponse.error() if the request failed.
         """
@@ -332,7 +336,6 @@ class FacebookAdsApiBatch(object):
     """
     Exposes methods to build a sequence of calls which can be executed with
     a single http request.
-
     Note: Individual exceptions won't be thrown for each call that fails.
         The success and failure callback functions corresponding to a call
         should handle its success or failure.
@@ -344,6 +347,7 @@ class FacebookAdsApiBatch(object):
         self._batch = []
         self._success_callbacks = []
         self._failure_callbacks = []
+        self._requests = []
 
     def __len__(self):
         return len(self._batch)
@@ -357,9 +361,9 @@ class FacebookAdsApiBatch(object):
         files=None,
         success=None,
         failure=None,
+        request=None,
     ):
         """Adds a call to the batch.
-
         Args:
             method: The HTTP method name (e.g. 'GET').
             relative_path: A tuple of path tokens or a relative URL string.
@@ -378,7 +382,7 @@ class FacebookAdsApiBatch(object):
                 the FacebookResponse of this call if the call succeeded.
             failure (optional): A callback function which will be called with
                 the FacebookResponse of this call if the call failed.
-
+            request (optional): The APIRequest object
         Returns:
             A dictionary describing the call.
         """
@@ -396,7 +400,10 @@ class FacebookAdsApiBatch(object):
             params = _top_level_param_json_encode(params)
             keyvals = ['%s=%s' % (key, urls.quote_with_encoding(value))
                        for key, value in params.items()]
-            call['body'] = '&'.join(keyvals)
+            if method == 'GET':
+                call['relative_url'] += '?' + '&'.join(keyvals)
+            else:
+                call['body'] = '&'.join(keyvals)
 
         if files:
             call['attached_files'] = ','.join(files.keys())
@@ -413,19 +420,46 @@ class FacebookAdsApiBatch(object):
         self._files.append(files)
         self._success_callbacks.append(success)
         self._failure_callbacks.append(failure)
+        self._requests.append(request)
 
         return call
 
+    def add_request(
+        self,
+        request,
+        success=None,
+        failure=None,
+    ):
+        """Interface to add a APIRequest to the batch.
+        Args:
+            request: The APIRequest object to add
+            success (optional): A callback function which will be called with
+                the FacebookResponse of this call if the call succeeded.
+            failure (optional): A callback function which will be called with
+                the FacebookResponse of this call if the call failed.
+            Returns:
+                A dictionary describing the call.
+        """
+        updated_params = copy.deepcopy(request._params)
+        if request._fields:
+            updated_params['fields'] = ','.join(request._fields)
+        return self.add(
+            method=request._method,
+            relative_path=request._path,
+            params=updated_params,
+            files=request._file_params,
+            success=success,
+            failure=failure,
+            request=request,
+        )
+
     def execute(self):
         """Makes a batch call to the api associated with this object.
-
         For each individual call response, calls the success or failure callback
         function if they were specified.
-
         Note: Does not explicitly raise exceptions. Individual exceptions won't
         be thrown for each call that fails. The success and failure callback
         functions corresponding to a call should handle its success or failure.
-
         Returns:
             If some of the calls have failed, returns  a new FacebookAdsApiBatch
             object with those calls. Otherwise, returns None.
@@ -483,6 +517,306 @@ class FacebookAdsApiBatch(object):
         else:
             return None
 
+class FacebookRequest:
+    """
+    Represents an API request
+    """
+
+    def __init__(
+        self,
+        node_id,
+        method,
+        endpoint,
+        api=None,
+        param_checker=TypeChecker({}, {}),
+        target_class=None,
+        api_type=None,
+        allow_file_upload=False,
+        response_parser=None,
+        include_summary=True,
+        api_version=None,
+    ):
+        """
+        Args:
+            node_id: The node id to perform the api call.
+            method: The HTTP method of the call.
+            endpoint: The edge of the api call.
+            api (optional): The FacebookAdsApi object.
+            param_checker (optional): Parameter checker.
+            target_class (optional): The return class of the api call.
+            api_type (optional): NODE or EDGE type of the call.
+            allow_file_upload (optional): Whether the call allows upload.
+            response_parser (optional): An ObjectParser to parse response.
+            include_summary (optional): Include "summary".
+            api_version (optional): API version.
+        """
+        self._api = api or FacebookAdsApi.get_default_api()
+        self._node_id = node_id
+        self._method = method
+        self._endpoint = endpoint.replace('/', '')
+        self._path = (node_id, endpoint.replace('/', ''))
+        self._param_checker = param_checker
+        self._target_class = target_class
+        self._api_type = api_type
+        self._allow_file_upload = allow_file_upload
+        self._response_parser = response_parser
+        self._include_summary = include_summary
+        self._api_version = api_version
+        self._params = {}
+        self._fields = []
+        self._file_params = {}
+        self._file_counter = 0
+        self._accepted_fields = []
+        if target_class is not None:
+            self._accepted_fields = target_class.Field.__dict__.values()
+
+    def add_file(self, file_path):
+        if not self._allow_file_upload:
+            api_utils.warning('Endpoint ' + self._endpoint + ' cannot upload files')
+        file_key = 'source' + str(self._file_counter)
+        if os.path.isfile(file_path):
+            self._file_params[file_key] = file_path
+            self._file_counter += 1
+        else:
+            raise FacebookBadParameterError(
+                'Cannot find file ' + file_path + '!')
+        return self
+
+    def add_files(self, files):
+        if files is None:
+            return self
+        for file_path in files:
+            self.add_file(file_path)
+        return self
+
+    def add_field(self, field):
+        if field not in self._fields:
+            self._fields.append(field)
+        if field not in self._accepted_fields:
+            api_utils.warning(self._endpoint + ' does not allow field ' + field)
+        return self
+
+    def add_fields(self, fields):
+        if fields is None:
+            return self
+        for field in fields:
+            self.add_field(field)
+        return self
+
+    def add_param(self, key, value):
+        if not self._param_checker.is_valid_pair(key, value):
+            api_utils.warning('value of ' + key + ' might not be compatible. ' +
+                ' Expect ' + self._param_checker.get_type(key) + '; ' +
+                ' got ' + str(type(value)))
+        if self._param_checker.is_file_param(key):
+            self._file_params[key] = value
+        else:
+            self._params[key] = self._extract_value(value)
+        return self
+
+    def add_params(self, params):
+        if params is None:
+            return self
+        for key in params.keys():
+            self.add_param(key, params[key])
+        return self
+
+    def get_fields(self):
+        return list(self._fields)
+
+    def get_params(self):
+        return copy.deepcopy(self._params)
+
+    def execute(self):
+        params = copy.deepcopy(self._params)
+        if self._api_type == "EDGE" and self._method == "GET":
+            cursor = Cursor(
+                target_objects_class=self._target_class,
+                params=params,
+                fields=self._fields,
+                include_summary=self._include_summary,
+                api=self._api,
+                node_id=self._node_id,
+                endpoint=self._endpoint,
+            )
+            cursor.load_next_page()
+            return cursor
+        if self._fields:
+            params['fields'] = ','.join(self._fields)
+        with open_files(self._file_params) as files:
+            response = self._api.call(
+                method=self._method,
+                path=(self._path),
+                params=params,
+                files=files,
+                api_version=self._api_version,
+            )
+            if response.error():
+                raise response.error()
+            if self._response_parser:
+                return self._response_parser.parse_single(response.json())
+            else:
+                return response
+
+    def add_to_batch(self, batch, success=None, failure=None):
+        batch.add_request(self, success, failure)
+
+    def _extract_value(self, value):
+        if hasattr(value, 'export_all_data'):
+            return value.export_all_data()
+        elif isinstance(value, list):
+            return [self._extract_value(item) for item in value]
+        elif isinstance(value, dict):
+            return dict((self._extract_value(k), self._extract_value(v))
+                for (k, v) in value.items())
+        else:
+            return value
+
+class Cursor(object):
+
+    """Cursor is an cursor over an object's connections.
+        Previously called EdgeIterator.
+    Examples:
+        >>> me = AdAccountUser('me')
+        >>> my_accounts = [act for act in Cursor(me, AdAccount)]
+        >>> my_accounts
+        [<AdAccount act_abc>, <AdAccount act_xyz>]
+    """
+
+    def __init__(
+        self,
+        source_object=None,
+        target_objects_class=None,
+        fields=None,
+        params=None,
+        include_summary=True,
+        api=None,
+        node_id=None,
+        endpoint=None,
+        object_parser=None
+    ):
+        """
+        Initializes an cursor over the objects to which there is an edge from
+        source_object.
+        To initialize, you'll need to provide either (source_object and
+        target_objects_class) or (api, node_id, endpoint, and object_parser)
+        Args:
+            source_object: An AbstractObject instance from which to inspect an
+                edge. This object should have an id.
+            target_objects_class: Objects traverersed over will be initialized
+                with this AbstractObject class.
+            fields (optional): A list of fields of target_objects_class to
+                automatically read in.
+            params (optional): A mapping of request parameters where a key
+                is the parameter name and its value is a string or an object
+                which can be JSON-encoded.
+            include_summary (optional): Include summary.
+            api (optional): FacebookAdsApi object.
+            node_id (optional): The ID of calling node.
+            endpoint (optional): The edge name.
+            object_parser (optional): The ObjectParser to parse response.
+        """
+        self.params = dict(params or {})
+        target_objects_class._assign_fields_to_params(fields, self.params)
+        self._source_object = source_object
+        self._target_objects_class = target_objects_class
+        self._node_id = node_id or source_object.get_id_assured()
+        self._endpoint = endpoint or target_objects_class.get_endpoint()
+        self._api = api or source_object.get_api()
+        self._path = (
+            self._node_id,
+            self._endpoint,
+        )
+        self._queue = []
+        self._finished_iteration = False
+        self._total_count = None
+        self._include_summary = include_summary
+        self._object_parser = object_parser or ObjectParser(
+            api=self._api,
+            target_class=self._target_objects_class,
+        )
+
+    def __repr__(self):
+        return str(self._queue)
+
+    def __len__(self):
+        return len(self._queue)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        # Load next page at end.
+        # If load_next_page returns False, raise StopIteration exception
+        if not self._queue and not self.load_next_page():
+            raise StopIteration()
+
+        return self._queue.pop(0)
+
+    # Python 2 compatibility.
+    next = __next__
+
+    def __getitem__(self, index):
+        return self._queue[index]
+
+    def total(self):
+        if self._total_count is None:
+            raise FacebookUnavailablePropertyException(
+                "Couldn't retrieve the object total count for that type "
+                "of request.",
+            )
+        return self._total_count
+
+    def load_next_page(self):
+        """Queries server for more nodes and loads them into the internal queue.
+        Returns:
+            True if successful, else False.
+        """
+        if self._finished_iteration:
+            return False
+
+        if self._include_summary:
+            if 'summary' not in self.params:
+                self.params['summary'] = True
+
+        response = self._api.call(
+            'GET',
+            self._path,
+            params=self.params,
+        ).json()
+
+        if 'paging' in response and 'next' in response['paging']:
+            self._path = response['paging']['next']
+        else:
+            # Indicate if this was the last page
+            self._finished_iteration = True
+
+        if (
+            self._include_summary and
+            'summary' in response and
+            'total_count' in response['summary']
+        ):
+            self._total_count = response['summary']['total_count']
+
+        self._queue = self.build_objects_from_response(response)
+        return len(self._queue) > 0
+
+    def get_one(self):
+        for obj in self:
+            return obj
+        return None
+
+    def build_objects_from_response(self, response):
+        return self._object_parser.parse_multiple(response)
+
+@contextmanager
+def open_files(files):
+    opened_files = {}
+    for key, path in files.items():
+        opened_files.update({key: open(path, 'rb')})
+    yield opened_files
+    for file in opened_files.values():
+        file.close()
 
 def _top_level_param_json_encode(params):
     params = params.copy()
