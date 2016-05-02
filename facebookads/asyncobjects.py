@@ -1214,8 +1214,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
             self.job.remote_read()
         except FacebookRequestError as exc:
             if exc.api_error_code() == FacebookErrorCodes.unsupported_request and \
-                    self.failed_with_unsupported_request < 3:
-                logger.warn("job id {} recieved unsupported request error,"
+                    self.failed_with_unsupported_request < 2:
+                logger.warn("job id {} recieved unsupported request error, "
                             "attempts failed with the error {}, job requested at {}, "
                             "report params: {}, response: '{}'".format(
                     self.job_id, self.failed_with_unsupported_request,
@@ -1242,13 +1242,17 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 self.job_last_checked = time.time()
                 return self
 
-            raise JobFailedException("job id {} recieved unsupported request error,"
-                            "attempts failed with the error {}, job requested at {}, "
-                            "report params: {}, response: '{}'".format(
-                self.job_id, self.failed_with_unsupported_request,
-                datetime.fromtimestamp(self.job_started_at),
-                self.params, str(self.job)))
-        async_status = self.job.get_async_status()
+            if exc.api_error_code() == FacebookErrorCodes.unsupported_request:
+                async_status = 'Job Failed'
+            else:
+                raise JobFailedException("job id {} recieved unsupported request error, "
+                                "attempts failed with the error {}, job requested at {}, "
+                                "report params: {}, response: '{}'".format(
+                    self.job_id, self.failed_with_unsupported_request,
+                    datetime.fromtimestamp(self.job_started_at),
+                    self.params, str(self.job)))
+        else:
+            async_status = self.job.get_async_status()
 
         self.job_last_checked = time.time()
         current_job_completion_value = self.job.get_async_percent_completion()
