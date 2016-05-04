@@ -1244,6 +1244,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
             if exc.api_error_code() == FacebookErrorCodes.unsupported_request:
                 async_status = 'Job Failed'
+                current_job_completion_value = 0
             else:
                 raise JobFailedException("job id {} recieved unsupported request error, "
                                 "attempts failed with the error {}, job requested at {}, "
@@ -1253,9 +1254,9 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.params, str(self.job)))
         else:
             async_status = self.job.get_async_status()
+            current_job_completion_value = self.job.get_async_percent_completion()
 
         self.job_last_checked = time.time()
-        current_job_completion_value = self.job.get_async_percent_completion()
 
         logger.debug('job_id: {}, completion: {}, status: {}'.format(
                 self.job_id, current_job_completion_value, self.job.get_async_status()))
