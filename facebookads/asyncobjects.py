@@ -1102,6 +1102,8 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
 
         :rtype: str
         """
+        if self.Field.async_status not in self:
+            return 0
         return self[self.Field.async_status]
 
     def get_async_percent_completion(self):
