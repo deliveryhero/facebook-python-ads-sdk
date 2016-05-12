@@ -732,6 +732,15 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
             include_summary=False, limit=limit
         )
 
+    def get_ads_pixels_aio(self, fields=None, params=None, limit=100):
+        return self.iterate_edge_aio(
+            AdsPixel,
+            fields,
+            params,
+            include_summary=False,
+            limit=limit
+        )
+
 
 class AdAccountGroup(AbstractCrudAioObject, baseobjects.AdAccountGroup):
     pass
