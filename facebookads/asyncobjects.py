@@ -180,7 +180,8 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
         Returns number of iterms in response.
         Gets response data and adds it to self._queue.
         """
-        if 'data' in response and isinstance(response['data'], list):
+        if not isinstance(response, string_types) and 'data' in response and \
+                isinstance(response['data'], list):
             new_cnt = len(response['data'])
             self._queue += response['data']
 
@@ -189,7 +190,10 @@ class AioEdgeIterator(baseobjects.EdgeIterator):
                 self._finished_iteration = True
         else:
             self._finished_iteration = True
-            data = response['data'] if 'data' in response else response
+            if not isinstance(response, string_types) and 'data' in response:
+                data = response['data']
+            else:
+                data = response
             self._queue.append(data)
             new_cnt = 1
         self._response = None
