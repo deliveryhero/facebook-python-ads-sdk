@@ -6,7 +6,7 @@ from datetime import datetime
 import facebookads.objects as baseobjects
 from facebookads.asyncapi import FacebookAdsAsyncApi
 from facebookads.exceptions import (FacebookRequestError, FacebookApiTimeout,
-    FacebookUnavailablePropertyException, JobFailedException)
+    FacebookUnavailablePropertyException, JobFailedException, FacebookError)
 from facebookads.utils.fberrcodes import FacebookErrorCodes
 
 from six import string_types, text_type, binary_type
@@ -1188,7 +1188,19 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 else:
                     raise exc
             else:
-                break
+                if isinstance(response, string_types) and i < 4:
+                    time.sleep(15 + i * 15)
+                else:
+                    if isinstance(response, string_types):
+                        raise FacebookRequestError(
+                            "Facebook response is a string",
+                            {"method": "POST", "path": "/{}/{}".format(
+                                self._source_object.get_id_assured(),
+                                self._target_objects_class.get_endpoint()),
+                             "params": self.params},
+                            500, {}, response
+                        )
+                    break
 
         self.job_started_at = time.time()
         self.attempt += 1
