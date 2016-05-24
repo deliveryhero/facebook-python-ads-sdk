@@ -540,7 +540,8 @@ class AbstractCrudAioObject(object):
         return iterator
 
     def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None,
-                               has_action=None, needs_action_device=None, limit=500):
+                               has_action=None, needs_action_device=None, limit=500,
+                               has_filters=False):
         """
         Returns an AsyncAioJob which can be checked using remote_read()
         to verify when the job is completed and the result ready to query
@@ -557,7 +558,8 @@ class AbstractCrudAioObject(object):
             target_objects_class,
             fields=fields, limit=limit,
             params=params, has_action=has_action,
-            needs_action_device=needs_action_device
+            needs_action_device=needs_action_device,
+            has_filters=has_filters
         )
 
         result.launch_job()
@@ -712,7 +714,7 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params, limit=limit)
 
     def get_insights_aio(self, fields=None, params=None, limit=1000, async=False,
-                         has_action=None, needs_action_device=None):
+                         has_action=None, needs_action_device=None, has_filters=False):
         """
         If async is False, returns EdgeIterator.
 
@@ -725,9 +727,8 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         """
         if async:
             return self.iterate_edge_async_aio(
-                Insights,
-                fields,
-                params, has_action, needs_action_device, limit=limit
+                Insights, fields, params, has_action,
+                needs_action_device, limit=limit, has_filters=has_filters
             )
         return self.iterate_edge_aio(
             Insights,
@@ -1088,6 +1089,7 @@ class AsyncAioJob(AbstractCrudAioObject, baseobjects.AsyncJob):
         self.edge_params = kwargs.pop('edge_params', None)
         self.has_action = kwargs.pop('has_action', None)
         self.needs_action_device = kwargs.pop('needs_action_device', None)
+        self.has_filters = kwargs.pop('has_filters', False)
 
         super(AsyncAioJob, self).__init__(*args, **kwargs)
 
@@ -1133,7 +1135,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                  fields=None, params=None, include_summary=True,
                  limit=500, stage='async_get_job',
                  no_progress_timeout=900, not_started_timeout=1200,
-                 has_action=None, needs_action_device=None):
+                 has_action=None, needs_action_device=None, has_filters=False):
 
         super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
                                                   fields=fields, params=params,
@@ -1157,6 +1159,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
 
         self.has_action = has_action
         self.needs_action_device = needs_action_device
+        self.has_filters = has_filters
 
     def launch_job(self):
         """
@@ -1213,7 +1216,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
         # for when the result is ready to be queried
         self.job = AsyncAioJob(self._target_objects_class, edge_params=self.params,
                                has_action=self.has_action,
-                               needs_action_device=self.needs_action_device)
+                               needs_action_device=self.needs_action_device,
+                               has_filters=self.has_filters)
         self.job._set_data(response)
         self.job_id = response['id'] if 'id' in response else 'no id'
         self._source_object.get_api_assured().put_in_futures(self)
