@@ -39,6 +39,7 @@ from .. import specs
 from .. import exceptions
 from .. import session
 from .. import utils
+from facebookads.utils import version
 
 
 class CustomAudienceTestCase(unittest.TestCase):
@@ -82,18 +83,20 @@ class CustomAudienceTestCase(unittest.TestCase):
 
     def test_multi_key_params(self):
         schema = [
+            objects.CustomAudience.Schema.MultiKeySchema.extern_id,
             objects.CustomAudience.Schema.MultiKeySchema.fn,
             objects.CustomAudience.Schema.MultiKeySchema.email,
             objects.CustomAudience.Schema.MultiKeySchema.ln,
         ]
         payload = objects.CustomAudience.format_params(
-            schema,
-            [["  TEST ", "test", "..test.."]],
+            schema,[["abc123def", "  TEST ", "test", "..test.."]],
             is_raw=True,
         )
         # This is the value of ["  Test ", " test", "..test"] and
         # ["TEST2", 'TEST3', '..test5..'] when it's hashed with sha256
+        # extern_id, however, should never get hashed.
         test_hash1 = [
+            "abc123def",
             "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
             "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
             "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
@@ -101,6 +104,26 @@ class CustomAudienceTestCase(unittest.TestCase):
 
         users = payload['payload']['data']
         assert users[0] == test_hash1
+
+    def test_extern_id_key_single(self):
+
+        schema = [
+            objects.CustomAudience.Schema.MultiKeySchema.extern_id,
+        ]
+        payload = objects.CustomAudience.format_params(
+            schema,
+            [
+                ["abc123def"], ["abc234def"], ["abc345def"], ["abc456def"],
+            ],
+            is_raw=True,
+        )
+
+        expected = [
+            ["abc123def"], ["abc234def"], ["abc345def"], ["abc456def"],
+         ]
+
+        actual = payload['payload']['data']
+        assert actual == expected
 
 
 class EdgeIteratorTestCase(unittest.TestCase):
@@ -431,8 +454,7 @@ class FacebookAdsApiBatchTestCase(unittest.TestCase):
         self.assertEqual(len(batch_api), 1)
         self.assertEqual(batch_api._batch[0], {
             'method': 'GET',
-            'relative_url': 'some/path',
-            'body': 'key=' + utils.urls.quote_with_encoding(u'vàlué')
+            'relative_url': 'some/path?'+'key=' + utils.urls.quote_with_encoding(u'vàlué')
         })
 
 
@@ -441,6 +463,17 @@ class VersionUtilsTestCase(unittest.TestCase):
     def test_api_version_is_pulled(self):
         version_value = utils.version.get_version()
         assert re.search('[0-9]+\.[0-9]+\.[0-9]', version_value)
+
+
+class FacebookResponseTestCase(unittest.TestCase):
+
+    def test_is_success_200(self):
+        resp = api.FacebookResponse(http_status=200)
+        self.assertTrue(resp.is_success())
+
+    def test_is_success_service_unavailable(self):
+        resp = api.FacebookResponse(body="Service Unavailable", http_status=200)
+        self.assertFalse(resp.is_success())
 
 if __name__ == '__main__':
     unittest.main()

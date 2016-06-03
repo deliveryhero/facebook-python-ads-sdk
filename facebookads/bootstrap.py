@@ -36,12 +36,10 @@ from facebookads.exceptions import FacebookError
 class Authentication():
     """
         DON'T USE THIS CLASS DIRECTLY. USE `auth()` function from this module
-
         Helper class to authenticate using config.json config file from this
         repository. This is useful in two cases:
             - Testing environment
             - Interactive exploration in REPL
-
         This class shouldn't be used in production.
         It's intended for development. Use FacebookAdsApi.init in production
     """

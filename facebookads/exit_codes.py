@@ -25,4 +25,3 @@ class ExitCodesEnum:
     SUCCESS = 0
     USER_ERROR = 40
     USER_SKIP = 42
-
