@@ -479,7 +479,7 @@ class AbstractCrudAioObject(object):
         :type fields: list | tuple
         :type api: FacebookAdsAsyncApi
         :param limit: how big should slices be
-        :rtype: list[baseobjects.AbstractCrudObject]
+        :rtype: list[dict]
         """
         ids = list(ids)
         api = api or FacebookAdsAsyncApi.get_default_api()
