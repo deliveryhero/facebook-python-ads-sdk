@@ -499,9 +499,9 @@ class AbstractCrudAioObject(object):
                 raise response.last_error
 
             for fbid, data in response.get_all_results():
-                obj = cls(fbid, api=api)
-                obj._set_data(data)
-                result.append(obj)
+                # obj = cls(fbid, api=api)
+                # obj._set_data(data)
+                result.append(data)
         return result
 
     # Getters
