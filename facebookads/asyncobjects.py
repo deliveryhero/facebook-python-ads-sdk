@@ -1303,7 +1303,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 results_iterator = self.job.get_result(limit=self.limit)
                 return results_iterator
 
-            elif self.attempt >= 5:
+            elif self.attempt >= 3:
                 raise exc_class("job id {} failed for {}, reason unknown, response: {}, "
                          "report params: {}".format(self.job_id, self, str(self.job), self.params))
 
@@ -1320,7 +1320,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
-                if self.attempt >= 5:
+                if self.attempt >= 3:
                     # we make 5 attempts to get the data and only then fail
                     self.last_error = exc_class(
                         "job id {} failed, failed attempts {}, job requested at {}, "
@@ -1350,7 +1350,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.job_id, datetime.fromtimestamp(self.job_started_at),
                     self.attempt, self.params, str(self.job)))
 
-                if self.attempt >= 4:
+                if self.attempt >= 3:
                     self.last_error = exc_class(
                         "job id {} is not started yet, job requested at {}, "
                         "attempts made {}, report params: {}, response: '{}'".format(
@@ -1372,7 +1372,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
-                if self.attempt >= 5:
+                if self.attempt >= 4:
                     self.last_error = exc_class(
                         "job id {} stuck, completion {}, job requested at {}, "
                         "attempts made {}, report params: {}, response: '{}'".format(
