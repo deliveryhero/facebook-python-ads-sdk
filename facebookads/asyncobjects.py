@@ -541,7 +541,7 @@ class AbstractCrudAioObject(object):
 
     def iterate_edge_async_aio(self, target_objects_class, fields=None, params=None,
                                has_action=None, needs_action_device=None, limit=500,
-                               has_filters=False):
+                               has_filters=False, for_date=None):
         """
         Returns an AsyncAioJob which can be checked using remote_read()
         to verify when the job is completed and the result ready to query
@@ -559,7 +559,7 @@ class AbstractCrudAioObject(object):
             fields=fields, limit=limit,
             params=params, has_action=has_action,
             needs_action_device=needs_action_device,
-            has_filters=has_filters
+            has_filters=has_filters, for_date=for_date
         )
 
         result.launch_job()
@@ -714,7 +714,7 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         return self.iterate_edge_aio(baseobjects.CustomConversion, fields, params, limit=limit)
 
     def get_insights_aio(self, fields=None, params=None, limit=1000, async=False,
-                         has_action=None, needs_action_device=None, has_filters=False):
+                         has_action=None, needs_action_device=None, has_filters=False, for_date=None):
         """
         If async is False, returns EdgeIterator.
 
@@ -728,7 +728,7 @@ class AdAccount(AbstractCrudAioObject, baseobjects.AdAccount):
         if async:
             return self.iterate_edge_async_aio(
                 Insights, fields, params, has_action,
-                needs_action_device, limit=limit, has_filters=has_filters
+                needs_action_device, limit=limit, has_filters=has_filters, for_date=for_date
             )
         return self.iterate_edge_aio(
             Insights,
@@ -765,7 +765,7 @@ class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
         return self.iterate_edge_aio(Ad, fields, params, limit=limit)
 
     def get_insights_aio(self, fields=None, params=None, limit=1000, async=False,
-                         has_action=None, needs_action_device=None):
+                         has_action=None, needs_action_device=None, for_date=None):
         """
         If async is False, returns EdgeIterator.
 
@@ -780,7 +780,7 @@ class Campaign(AbstractCrudAioObject, baseobjects.Campaign):
             return self.iterate_edge_async_aio(
                 Insights,
                 fields,
-                params, has_action, needs_action_device, limit=limit
+                params, has_action, needs_action_device, limit=limit, for_date=for_date
             )
         return self.iterate_edge_aio(
             Insights,
@@ -1134,12 +1134,14 @@ class AsyncAioJobIterator(AioEdgeIterator):
     def __init__(self, source_object, target_objects_class,
                  fields=None, params=None, include_summary=True,
                  limit=500, stage='async_get_job',
-                 no_progress_timeout=900, not_started_timeout=1200,
-                 has_action=None, needs_action_device=None, has_filters=False):
+                 no_progress_timeout=900, not_started_timeout=600,
+                 has_action=None, needs_action_device=None, has_filters=False,
+                 for_date=None):
 
         super(AsyncAioJobIterator, self).__init__(source_object, target_objects_class,
                                                   fields=fields, params=params,
-                                                  include_summary=include_summary, limit=limit)
+                                                  include_summary=include_summary,
+                                                  limit=limit)
         self.job = None
         self.failed_attempt = 0
         self.failed_with_unsupported_request = 0
@@ -1160,6 +1162,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
         self.has_action = has_action
         self.needs_action_device = needs_action_device
         self.has_filters = has_filters
+        self.for_date = for_date
 
     def launch_job(self):
         """
@@ -1320,8 +1323,8 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     datetime.fromtimestamp(self.job_started_at), self.attempt,
                     self.params, str(self.job)))
 
-                if self.attempt >= 3:
-                    # we make 5 attempts to get the data and only then fail
+                if ('filtering' in self.params and self.params['filtering'] and self.attempt >= 1) or self.attempt >= 3:
+                    # we make 4 attempts to get the data and only then fail
                     self.last_error = exc_class(
                         "job id {} failed, failed attempts {}, job requested at {}, "
                         "attempts made {}, report params: {}, response: '{}'".format(
@@ -1343,14 +1346,14 @@ class AsyncAioJobIterator(AioEdgeIterator):
                 self.failed_attempt += 1
 
         elif async_status == "Job Not Started":
-            if time.time() - self.job_started_at > self.not_started_timeout:
+            if time.time() - self.job_started_at > (self.not_started_timeout + 660 * self.attempt):
                 logger.warn("job id {} is not started yet, "
                             "job requested at {}, attempts made {}, "
                             "report params: {}, response: '{}'".format(
                     self.job_id, datetime.fromtimestamp(self.job_started_at),
                     self.attempt, self.params, str(self.job)))
 
-                if self.attempt >= 3:
+                if self.attempt >= 2:
                     self.last_error = exc_class(
                         "job id {} is not started yet, job requested at {}, "
                         "attempts made {}, report params: {}, response: '{}'".format(
@@ -1360,7 +1363,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     self.job_last_checked = time.time()
                     return self
 
-                time.sleep(10 + 10 * self.failed_attempt)
+                time.sleep(10 + 10 * self.attempt)
                 self.launch_job()
 
         else:
@@ -1384,7 +1387,7 @@ class AsyncAioJobIterator(AioEdgeIterator):
                     return self
 
                 # create new job and wait for it to complete
-                time.sleep(10 + 10 * self.failed_attempt)
+                time.sleep(10 + 10 * self.attempt)
                 self.launch_job()
 
         if self.job_previous_completion_value != current_job_completion_value:
