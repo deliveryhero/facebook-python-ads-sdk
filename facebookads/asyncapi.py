@@ -79,14 +79,14 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
     _default_api = None
     _default_account_id = None
 
-    def __init__(self, session, threadpool_size):
+    def __init__(self, session, api_version=None, threadpool_size=10):
         """Initializes the api instance.
 
         Args:
             session: FacebookSession object that contains a requests interface
                 and attribute GRAPH (the Facebook GRAPH API URL).
         """
-        super(FacebookAdsAsyncApi, self).__init__(session)
+        super(FacebookAdsAsyncApi, self).__init__(session, api_version)
         self._thread_lock = threading.Lock()
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(threadpool_size)
         self._futures = {}
@@ -96,11 +96,11 @@ class FacebookAdsAsyncApi(FacebookAdsApi):
 
     @classmethod
     def init(cls, app_id=None, app_secret=None, access_token=None,
-             account_id=None, pool_maxsize=10, max_retries=0):
+             account_id=None, api_version=None, pool_maxsize=10, max_retries=0):
         # connection pool size is +1 because there also is the main thread that can also issue a request
         session = FacebookSession(app_id, app_secret, access_token,
                                   pool_maxsize+1, max_retries)
-        api = cls(session, threadpool_size=pool_maxsize)
+        api = cls(session, api_version=api_version, threadpool_size=pool_maxsize)
         cls.set_default_api(api)
         # TODO: how to avoid this hack?
         FacebookAdsApi.set_default_api(api)
