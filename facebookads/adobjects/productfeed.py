@@ -86,9 +86,7 @@ class ProductFeed(
         return ProductCatalog(api=self._api, fbid=parent_id).create_product_feed(fields, params, batch, pending)
 
     def api_delete(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
-            'id': 'string',
         }
         enums = {
         }
@@ -108,11 +106,13 @@ class ProductFeed(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -133,17 +133,18 @@ class ProductFeed(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_update(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
             'default_currency': 'string',
             'deletion_enabled': 'bool',
             'delimiter': 'delimiter_enum',
             'encoding': 'encoding_enum',
-            'id': 'string',
             'name': 'string',
             'quoted_fields': 'bool',
             'schedule': 'string',
@@ -158,7 +159,7 @@ class ProductFeed(
             endpoint='/',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=ProductFeed,
             api_type='NODE',
             response_parser=ObjectParser(reuse_object=self),
         )
@@ -168,12 +169,14 @@ class ProductFeed(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_products(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.productitem import ProductItem
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -194,12 +197,14 @@ class ProductFeed(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_uploads(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.productfeedupload import ProductFeedUpload
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -220,16 +225,18 @@ class ProductFeed(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def create_upload(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.productfeedupload import ProductFeedUpload
-        self.assure_call()
         param_types = {
             'file': 'file',
-            'id': 'string',
             'password': 'string',
+            'update_only': 'bool',
             'url': 'string',
             'username': 'string',
         }
@@ -251,8 +258,11 @@ class ProductFeed(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'country': 'string',

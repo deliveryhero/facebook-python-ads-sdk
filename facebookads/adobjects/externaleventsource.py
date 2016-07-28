@@ -42,12 +42,9 @@ class ExternalEventSource(
 
     class Field(AbstractObject.Field):
         id = 'id'
+        name = 'name'
         source_type = 'source_type'
         external_event_sources = 'external_event_sources'
-
-    class SourceType:
-        app = 'APP'
-        pixel = 'PIXEL'
 
     @classmethod
     def get_endpoint(cls):
@@ -58,7 +55,6 @@ class ExternalEventSource(
         return ProductCatalog(api=self._api, fbid=parent_id).create_external_event_source(fields, params, batch, pending)
 
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -79,17 +75,20 @@ class ExternalEventSource(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'id': 'string',
-        'source_type': 'SourceType',
+        'name': 'string',
+        'source_type': 'string',
         'external_event_sources': 'list<string>',
     }
 
     @classmethod
     def _get_field_enum_info(cls):
         field_enum_info = {}
-        field_enum_info['SourceType'] = ExternalEventSource.SourceType.__dict__.values()
         return field_enum_info

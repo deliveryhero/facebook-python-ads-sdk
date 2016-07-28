@@ -34,8 +34,8 @@ pull request for this class.
 """
 
 class AdImage(
-    AbstractCrudObject,
     AdImageMixin,
+    AbstractCrudObject,
 ):
 
     def __init__(self, fbid=None, parent_id=None, api=None):
@@ -49,9 +49,11 @@ class AdImage(
         hash = 'hash'
         height = 'height'
         id = 'id'
+        last_used_time = 'last_used_time'
         name = 'name'
         original_height = 'original_height'
         original_width = 'original_width'
+        owner_business = 'owner_business'
         permalink_url = 'permalink_url'
         status = 'status'
         updated_time = 'updated_time'
@@ -76,7 +78,6 @@ class AdImage(
         return AdAccount(api=self._api, fbid=parent_id).create_ad_image(fields, params, batch, pending)
 
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -97,8 +98,11 @@ class AdImage(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'account_id': 'string',
@@ -107,9 +111,11 @@ class AdImage(
         'hash': 'string',
         'height': 'unsigned int',
         'id': 'string',
+        'last_used_time': 'datetime',
         'name': 'string',
         'original_height': 'unsigned int',
         'original_width': 'unsigned int',
+        'owner_business': 'Business',
         'permalink_url': 'string',
         'status': 'Status',
         'updated_time': 'datetime',

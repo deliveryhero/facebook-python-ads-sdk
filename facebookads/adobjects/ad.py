@@ -120,9 +120,9 @@ class Ad(
         lifetime = 'lifetime'
 
     class ExecutionOptions:
-        validate_only = 'VALIDATE_ONLY'
-        synchronous_ad_review = 'SYNCHRONOUS_AD_REVIEW'
-        include_recommendations = 'INCLUDE_RECOMMENDATIONS'
+        validate_only = 'validate_only'
+        synchronous_ad_review = 'synchronous_ad_review'
+        include_recommendations = 'include_recommendations'
 
     class Operator:
         all = 'ALL'
@@ -137,7 +137,6 @@ class Ad(
         return AdAccount(api=self._api, fbid=parent_id).create_ad(fields, params, batch, pending)
 
     def api_delete(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -158,11 +157,13 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -183,11 +184,13 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_update(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
             'adlabels': 'list<Object>',
             'adset_id': 'unsigned int',
@@ -210,7 +213,7 @@ class Ad(
             endpoint='/',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=Ad,
             api_type='NODE',
             response_parser=ObjectParser(reuse_object=self),
         )
@@ -220,12 +223,14 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_ad_creatives(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adcreative import AdCreative
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -246,16 +251,17 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def delete_ad_labels(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adlabel import AdLabel
-        self.assure_call()
         param_types = {
             'adlabels': 'list<Object>',
             'execution_options': 'list<execution_options_enum>',
-            'id': 'string',
         }
         enums = {
             'execution_options_enum': AdLabel.ExecutionOptions.__dict__.values(),
@@ -276,16 +282,17 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def create_ad_label(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adlabel import AdLabel
-        self.assure_call()
         param_types = {
             'adlabels': 'list<Object>',
             'execution_options': 'list<execution_options_enum>',
-            'id': 'string',
         }
         enums = {
             'execution_options_enum': AdLabel.ExecutionOptions.__dict__.values(),
@@ -296,9 +303,9 @@ class Ad(
             endpoint='/adlabels',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=AdLabel,
             api_type='EDGE',
-            response_parser=ObjectParser(target_class=AbstractCrudObject),
+            response_parser=ObjectParser(target_class=AdLabel),
         )
         request.add_params(params)
         request.add_fields(fields)
@@ -306,14 +313,16 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_insights(self, fields=None, params=None, async=False, batch=None, pending=False):
         from facebookads.adobjects.adsinsights import AdsInsights
         if async:
           return self.get_insights_async(fields, params, batch, pending)
-        self.assure_call()
         param_types = {
             'action_attribution_windows': 'list<action_attribution_windows_enum>',
             'action_breakdowns': 'list<action_breakdowns_enum>',
@@ -359,13 +368,15 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_insights_async(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adreportrun import AdReportRun
         from facebookads.adobjects.adsinsights import AdsInsights
-        self.assure_call()
         param_types = {
             'action_attribution_windows': 'list<action_attribution_windows_enum>',
             'action_breakdowns': 'list<action_breakdowns_enum>',
@@ -411,12 +422,14 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_keyword_stats(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adkeywordstats import AdKeywordStats
-        self.assure_call()
         param_types = {
             'date': 'datetime',
         }
@@ -438,12 +451,14 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_leads(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.lead import Lead
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -464,18 +479,22 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_previews(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adpreview import AdPreview
-        self.assure_call()
         param_types = {
             'ad_format': 'ad_format_enum',
+            'dynamic_creative_spec': 'Object',
             'height': 'unsigned int',
+            'interactive': 'bool',
             'locale': 'string',
             'post': 'Object',
-            'product_item_ids': 'list<int>',
+            'product_item_ids': 'list<string>',
             'width': 'unsigned int',
         }
         enums = {
@@ -497,12 +516,14 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_reach_estimate(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.reachestimate import ReachEstimate
-        self.assure_call()
         param_types = {
             'currency': 'string',
             'daily_budget': 'float',
@@ -527,12 +548,14 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_targeting_sentence_lines(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.targetingsentenceline import TargetingSentenceLine
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -553,8 +576,11 @@ class Ad(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'account_id': 'string',

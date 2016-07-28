@@ -51,6 +51,7 @@ class AdCreative(
         applink_treatment = 'applink_treatment'
         body = 'body'
         call_to_action_type = 'call_to_action_type'
+        effective_object_story_id = 'effective_object_story_id'
         id = 'id'
         image_crops = 'image_crops'
         image_hash = 'image_hash'
@@ -131,8 +132,6 @@ class AdCreative(
         store_item = 'STORE_ITEM'
         video = 'VIDEO'
         invalid = 'INVALID'
-        action_spec = 'ACTION_SPEC'
-        instagram_media = 'INSTAGRAM_MEDIA'
 
     class RunStatus:
         active = 'ACTIVE'
@@ -155,11 +154,9 @@ class AdCreative(
         return AdAccount(api=self._api, fbid=parent_id).create_ad_creative(fields, params, batch, pending)
 
     def api_delete(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
             'account_id': 'string',
             'adlabels': 'list<Object>',
-            'id': 'string',
             'name': 'string',
             'run_status': 'unsigned int',
         }
@@ -181,12 +178,16 @@ class AdCreative(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
+            'thumbnail_height': 'unsigned int',
+            'thumbnail_width': 'unsigned int',
         }
         enums = {
         }
@@ -206,15 +207,16 @@ class AdCreative(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_update(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
             'account_id': 'string',
             'adlabels': 'list<Object>',
-            'id': 'string',
             'name': 'string',
             'run_status': 'unsigned int',
         }
@@ -226,7 +228,7 @@ class AdCreative(
             endpoint='/',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=AdCreative,
             api_type='NODE',
             response_parser=ObjectParser(reuse_object=self),
         )
@@ -236,14 +238,15 @@ class AdCreative(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def delete_ad_labels(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
             'adlabels': 'list<Object>',
-            'id': 'string',
         }
         enums = {
         }
@@ -263,14 +266,16 @@ class AdCreative(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def create_ad_label(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
+        from facebookads.adobjects.adlabel import AdLabel
         param_types = {
             'adlabels': 'list<Object>',
-            'id': 'string',
         }
         enums = {
         }
@@ -280,9 +285,9 @@ class AdCreative(
             endpoint='/adlabels',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=AdLabel,
             api_type='EDGE',
-            response_parser=ObjectParser(target_class=AbstractCrudObject),
+            response_parser=ObjectParser(target_class=AdLabel),
         )
         request.add_params(params)
         request.add_fields(fields)
@@ -290,15 +295,19 @@ class AdCreative(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_previews(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adpreview import AdPreview
-        self.assure_call()
         param_types = {
             'ad_format': 'ad_format_enum',
+            'dynamic_creative_spec': 'Object',
             'height': 'unsigned int',
+            'interactive': 'bool',
             'locale': 'string',
             'post': 'Object',
             'product_item_ids': 'list<string>',
@@ -323,8 +332,11 @@ class AdCreative(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'actor_id': 'string',
@@ -335,6 +347,7 @@ class AdCreative(
         'applink_treatment': 'ApplinkTreatment',
         'body': 'string',
         'call_to_action_type': 'CallToActionType',
+        'effective_object_story_id': 'string',
         'id': 'string',
         'image_crops': 'AdsImageCrops',
         'image_hash': 'string',

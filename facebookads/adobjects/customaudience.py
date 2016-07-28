@@ -34,8 +34,8 @@ pull request for this class.
 """
 
 class CustomAudience(
-    AbstractCrudObject,
     CustomAudienceMixin,
+    AbstractCrudObject,
 ):
 
     def __init__(self, fbid=None, parent_id=None, api=None):
@@ -48,10 +48,8 @@ class CustomAudience(
         data_source = 'data_source'
         delivery_status = 'delivery_status'
         description = 'description'
-        excluded_custom_audiences = 'excluded_custom_audiences'
         external_event_source = 'external_event_source'
         id = 'id'
-        included_custom_audiences = 'included_custom_audiences'
         last_used_time = 'last_used_time'
         lookalike_audience_ids = 'lookalike_audience_ids'
         lookalike_spec = 'lookalike_spec'
@@ -67,13 +65,18 @@ class CustomAudience(
         time_content_updated = 'time_content_updated'
         time_created = 'time_created'
         time_updated = 'time_updated'
+        claim_objective = 'claim_objective'
         content_type = 'content_type'
-        exclusions = 'exclusions'
-        inclusions = 'inclusions'
+        dataset_id = 'dataset_id'
+        event_source_group = 'event_source_group'
         list_of_accounts = 'list_of_accounts'
         origin_audience_id = 'origin_audience_id'
         prefill = 'prefill'
         product_set_id = 'product_set_id'
+
+    class ClaimObjective:
+        product = 'PRODUCT'
+        travel = 'TRAVEL'
 
     class ContentType:
         hotel = 'HOTEL'
@@ -83,6 +86,7 @@ class CustomAudience(
         custom = 'CUSTOM'
         website = 'WEBSITE'
         app = 'APP'
+        offline = 'OFFLINE'
         claim = 'CLAIM'
         partner = 'PARTNER'
         managed = 'MANAGED'
@@ -99,9 +103,7 @@ class CustomAudience(
         data_source = 'data_source'
         delivery_status = 'delivery_status'
         description = 'description'
-        excluded_custom_audiences = 'excluded_custom_audiences'
         external_event_source = 'external_event_source'
-        included_custom_audiences = 'included_custom_audiences'
         last_used_time = 'last_used_time'
         lookalike_audience_ids = 'lookalike_audience_ids'
         lookalike_spec = 'lookalike_spec'
@@ -127,9 +129,7 @@ class CustomAudience(
         return AdAccount(api=self._api, fbid=parent_id).create_custom_audience(fields, params, batch, pending)
 
     def api_delete(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
-            'id': 'int',
         }
         enums = {
         }
@@ -149,11 +149,13 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -174,16 +176,18 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_update(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
+            'claim_objective': 'claim_objective_enum',
             'content_type': 'content_type_enum',
             'description': 'string',
-            'exclusions': 'list<Object>',
-            'inclusions': 'list<Object>',
+            'event_source_group': 'string',
             'lookalike_spec': 'string',
             'name': 'string',
             'opt_out_link': 'string',
@@ -192,6 +196,7 @@ class CustomAudience(
             'rule': 'string',
         }
         enums = {
+            'claim_objective_enum': CustomAudience.ClaimObjective.__dict__.values(),
             'content_type_enum': CustomAudience.ContentType.__dict__.values(),
         }
         request = FacebookRequest(
@@ -200,7 +205,7 @@ class CustomAudience(
             endpoint='/',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=CustomAudience,
             api_type='NODE',
             response_parser=ObjectParser(reuse_object=self),
         )
@@ -210,15 +215,15 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def delete_ad_accounts(self, fields=None, params=None, batch=None, pending=False):
-        from facebookads.adobjects.customaudienceadaccount import CustomAudienceAdAccount
-        self.assure_call()
         param_types = {
             'adaccounts': 'list<string>',
-            'id': 'string',
         }
         enums = {
         }
@@ -228,9 +233,9 @@ class CustomAudience(
             endpoint='/adaccounts',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=CustomAudienceAdAccount,
+            target_class=AbstractCrudObject,
             api_type='EDGE',
-            response_parser=ObjectParser(target_class=CustomAudienceAdAccount),
+            response_parser=ObjectParser(target_class=AbstractCrudObject),
         )
         request.add_params(params)
         request.add_fields(fields)
@@ -238,12 +243,14 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_ad_accounts(self, fields=None, params=None, batch=None, pending=False):
-        from facebookads.adobjects.customaudienceadaccount import CustomAudienceAdAccount
-        self.assure_call()
+        from facebookads.adobjects.adaccount import AdAccount
         param_types = {
             'permissions': 'string',
         }
@@ -255,9 +262,9 @@ class CustomAudience(
             endpoint='/adaccounts',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=CustomAudienceAdAccount,
+            target_class=AdAccount,
             api_type='EDGE',
-            response_parser=ObjectParser(target_class=CustomAudienceAdAccount),
+            response_parser=ObjectParser(target_class=AdAccount),
         )
         request.add_params(params)
         request.add_fields(fields)
@@ -265,15 +272,16 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def create_ad_account(self, fields=None, params=None, batch=None, pending=False):
-        from facebookads.adobjects.customaudienceadaccount import CustomAudienceAdAccount
-        self.assure_call()
+        from facebookads.adobjects.adaccount import AdAccount
         param_types = {
             'adaccounts': 'list<string>',
-            'id': 'string',
             'permissions': 'string',
             'replace': 'bool',
         }
@@ -285,9 +293,9 @@ class CustomAudience(
             endpoint='/adaccounts',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=CustomAudienceAdAccount,
+            target_class=AdAccount,
             api_type='EDGE',
-            response_parser=ObjectParser(target_class=CustomAudienceAdAccount),
+            response_parser=ObjectParser(target_class=AdAccount),
         )
         request.add_params(params)
         request.add_fields(fields)
@@ -295,12 +303,14 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_ads(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.ad import Ad
-        self.assure_call()
         param_types = {
             'effective_status': 'list<string>',
         }
@@ -322,12 +332,14 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_prefills(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.customaudienceprefillstate import CustomAudiencePrefillState
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -348,12 +360,14 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_sessions(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.customaudiencesession import CustomAudienceSession
-        self.assure_call()
         param_types = {
             'session_id': 'unsigned int',
         }
@@ -375,13 +389,14 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def delete_users(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
-            'id': 'string',
             'payload': 'Object',
             'session': 'Object',
         }
@@ -403,13 +418,15 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def create_user(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
+        from facebookads.adobjects.user import User
         param_types = {
-            'id': 'string',
             'payload': 'Object',
             'session': 'Object',
         }
@@ -421,9 +438,9 @@ class CustomAudience(
             endpoint='/users',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=User,
             api_type='EDGE',
-            response_parser=ObjectParser(target_class=AbstractCrudObject),
+            response_parser=ObjectParser(target_class=User),
         )
         request.add_params(params)
         request.add_fields(fields)
@@ -431,8 +448,11 @@ class CustomAudience(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'account_id': 'string',
@@ -440,10 +460,8 @@ class CustomAudience(
         'data_source': 'CustomAudienceDataSource',
         'delivery_status': 'CustomAudienceStatus',
         'description': 'string',
-        'excluded_custom_audiences': 'list<CustomAudience>',
         'external_event_source': 'AdsPixel',
         'id': 'string',
-        'included_custom_audiences': 'list<CustomAudience>',
         'last_used_time': 'datetime',
         'lookalike_audience_ids': 'list<string>',
         'lookalike_spec': 'LookalikeSpec',
@@ -459,9 +477,10 @@ class CustomAudience(
         'time_content_updated': 'unsigned int',
         'time_created': 'unsigned int',
         'time_updated': 'unsigned int',
+        'claim_objective': 'ClaimObjective',
         'content_type': 'ContentType',
-        'exclusions': 'list<Object>',
-        'inclusions': 'list<Object>',
+        'dataset_id': 'string',
+        'event_source_group': 'string',
         'list_of_accounts': 'list<unsigned int>',
         'origin_audience_id': 'string',
         'prefill': 'bool',
@@ -471,6 +490,7 @@ class CustomAudience(
     @classmethod
     def _get_field_enum_info(cls):
         field_enum_info = {}
+        field_enum_info['ClaimObjective'] = CustomAudience.ClaimObjective.__dict__.values()
         field_enum_info['ContentType'] = CustomAudience.ContentType.__dict__.values()
         field_enum_info['Subtype'] = CustomAudience.Subtype.__dict__.values()
         field_enum_info['Fields'] = CustomAudience.Fields.__dict__.values()

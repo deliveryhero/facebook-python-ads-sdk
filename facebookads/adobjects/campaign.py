@@ -24,6 +24,7 @@ from facebookads.adobjects.objectparser import ObjectParser
 from facebookads.api import FacebookRequest
 from facebookads.typechecker import TypeChecker
 from facebookads.mixins import HasAdLabels
+from facebookads.mixins import CanValidate
 
 """
 This class is auto-generated.
@@ -36,6 +37,7 @@ pull request for this class.
 class Campaign(
     AbstractCrudObject,
     HasAdLabels,
+    CanValidate,
 ):
 
     def __init__(self, fbid=None, parent_id=None, api=None):
@@ -109,9 +111,8 @@ class Campaign(
         delete_archived_before = 'DELETE_ARCHIVED_BEFORE'
 
     class ExecutionOptions:
-        validate_only = 'VALIDATE_ONLY'
-        synchronous_ad_review = 'SYNCHRONOUS_AD_REVIEW'
-        include_recommendations = 'INCLUDE_RECOMMENDATIONS'
+        validate_only = 'validate_only'
+        include_recommendations = 'include_recommendations'
 
     class Objective:
         brand_awareness = 'BRAND_AWARENESS'
@@ -129,6 +130,7 @@ class Campaign(
         page_likes = 'PAGE_LIKES'
         post_engagement = 'POST_ENGAGEMENT'
         product_catalog_sales = 'PRODUCT_CATALOG_SALES'
+        reach = 'REACH'
         video_views = 'VIDEO_VIEWS'
 
     class Operator:
@@ -144,9 +146,7 @@ class Campaign(
         return AdAccount(api=self._api, fbid=parent_id).create_campaign(fields, params, batch, pending)
 
     def api_delete(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
-            'id': 'string',
         }
         enums = {
         }
@@ -166,11 +166,13 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -191,11 +193,13 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def api_update(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
             'adlabels': 'list<Object>',
             'execution_options': 'list<execution_options_enum>',
@@ -216,7 +220,7 @@ class Campaign(
             endpoint='/',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=Campaign,
             api_type='NODE',
             response_parser=ObjectParser(reuse_object=self),
         )
@@ -226,16 +230,17 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def delete_ad_labels(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adlabel import AdLabel
-        self.assure_call()
         param_types = {
             'adlabels': 'list<Object>',
             'execution_options': 'list<execution_options_enum>',
-            'id': 'string',
         }
         enums = {
             'execution_options_enum': AdLabel.ExecutionOptions.__dict__.values(),
@@ -256,16 +261,17 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def create_ad_label(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adlabel import AdLabel
-        self.assure_call()
         param_types = {
             'adlabels': 'list<Object>',
             'execution_options': 'list<execution_options_enum>',
-            'id': 'string',
         }
         enums = {
             'execution_options_enum': AdLabel.ExecutionOptions.__dict__.values(),
@@ -276,9 +282,9 @@ class Campaign(
             endpoint='/adlabels',
             api=self._api,
             param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
+            target_class=AdLabel,
             api_type='EDGE',
-            response_parser=ObjectParser(target_class=AbstractCrudObject),
+            response_parser=ObjectParser(target_class=AdLabel),
         )
         request.add_params(params)
         request.add_fields(fields)
@@ -286,12 +292,14 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_ads(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.ad import Ad
-        self.assure_call()
         param_types = {
             'ad_draft_id': 'string',
             'date_preset': 'date_preset_enum',
@@ -319,12 +327,14 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_ad_sets(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adset import AdSet
-        self.assure_call()
         param_types = {
             'ad_draft_id': 'string',
             'date_preset': 'date_preset_enum',
@@ -352,14 +362,16 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_insights(self, fields=None, params=None, async=False, batch=None, pending=False):
         from facebookads.adobjects.adsinsights import AdsInsights
         if async:
           return self.get_insights_async(fields, params, batch, pending)
-        self.assure_call()
         param_types = {
             'action_attribution_windows': 'list<action_attribution_windows_enum>',
             'action_breakdowns': 'list<action_breakdowns_enum>',
@@ -405,13 +417,15 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_insights_async(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adreportrun import AdReportRun
         from facebookads.adobjects.adsinsights import AdsInsights
-        self.assure_call()
         param_types = {
             'action_attribution_windows': 'list<action_attribution_windows_enum>',
             'action_breakdowns': 'list<action_breakdowns_enum>',
@@ -457,8 +471,11 @@ class Campaign(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'account_id': 'string',

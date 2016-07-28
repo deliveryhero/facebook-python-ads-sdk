@@ -95,16 +95,7 @@ class User(
         website = 'website'
         work = 'work'
 
-    class InstallType:
-        unknown = 'UNKNOWN'
-        auth_dialog = 'AUTH_DIALOG'
-        auth_referral = 'AUTH_REFERRAL'
-        instant_personalization = 'INSTANT_PERSONALIZATION'
-        start_now = 'START_NOW'
-        start_now_v2 = 'START_NOW_V2'
-
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -125,11 +116,13 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_accounts(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
             'business_id': 'string',
             'is_business': 'bool',
@@ -154,12 +147,14 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_ad_account_groups(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adaccountgroup import AdAccountGroup
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -180,15 +175,16 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def create_ad_account_group(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adaccountgroup import AdAccountGroup
-        self.assure_call()
         param_types = {
             'accounts': 'map',
-            'id': 'int',
             'name': 'string',
             'redownload': 'bool',
             'users': 'map',
@@ -211,12 +207,14 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_ad_accounts(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.adaccount import AdAccount
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -237,49 +235,14 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
-
-    def create_businesse(self, fields=None, params=None, batch=None, pending=False):
-        from facebookads.adobjects.business import Business
-        self.assure_call()
-        param_types = {
-            'id': 'int',
-            'name': 'string',
-            'primary_page': 'string',
-            'sales_rep_email': 'string',
-            'survey_business_type': 'survey_business_type_enum',
-            'survey_num_assets': 'unsigned int',
-            'survey_num_people': 'unsigned int',
-            'timezone_id': 'unsigned int',
-            'vertical': 'vertical_enum',
-        }
-        enums = {
-            'survey_business_type_enum': Business.SurveyBusinessType.__dict__.values(),
-            'vertical_enum': Business.Vertical.__dict__.values(),
-        }
-        request = FacebookRequest(
-            node_id=self['id'],
-            method='POST',
-            endpoint='/businesses',
-            api=self._api,
-            param_checker=TypeChecker(param_types, enums),
-            target_class=AbstractCrudObject,
-            api_type='EDGE',
-            response_parser=ObjectParser(target_class=AbstractCrudObject),
-        )
-        request.add_params(params)
-        request.add_fields(fields)
-
-        if batch is not None:
-            request.add_to_batch(batch)
+        elif pending:
             return request
-
-        return request if pending else request.execute()
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_lead_gen_forms(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.leadgenform import LeadgenForm
-        self.assure_call()
         param_types = {
             'query': 'string',
         }
@@ -301,12 +264,47 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
-        return request if pending else request.execute()
+    def get_picture(self, fields=None, params=None, batch=None, pending=False):
+        from facebookads.adobjects.profilepicturesource import ProfilePictureSource
+        param_types = {
+            'height': 'int',
+            'redirect': 'bool',
+            'type': 'type_enum',
+            'width': 'int',
+        }
+        enums = {
+            'type_enum': ProfilePictureSource.Type.__dict__.values(),
+        }
+        request = FacebookRequest(
+            node_id=self['id'],
+            method='GET',
+            endpoint='/picture',
+            api=self._api,
+            param_checker=TypeChecker(param_types, enums),
+            target_class=ProfilePictureSource,
+            api_type='EDGE',
+            response_parser=ObjectParser(target_class=ProfilePictureSource),
+        )
+        request.add_params(params)
+        request.add_fields(fields)
+
+        if batch is not None:
+            request.add_to_batch(batch)
+            return request
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_promotable_domains(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.domain import Domain
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -327,12 +325,14 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_promotable_events(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.event import Event
-        self.assure_call()
         param_types = {
             'is_page_event': 'bool',
         }
@@ -354,8 +354,11 @@ class User(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'about': 'string',
@@ -376,7 +379,7 @@ class User(
         'hometown': 'Object',
         'id': 'string',
         'inspirational_people': 'list<Object>',
-        'install_type': 'InstallType',
+        'install_type': 'string',
         'installed': 'bool',
         'interested_in': 'list<string>',
         'is_shared_login': 'bool',
@@ -403,7 +406,7 @@ class User(
         'sports': 'list<Object>',
         'test_group': 'unsigned int',
         'third_party_id': 'string',
-        'timezone': 'Object',
+        'timezone': 'float',
         'token_for_business': 'string',
         'updated_time': 'datetime',
         'verified': 'bool',
@@ -416,5 +419,4 @@ class User(
     @classmethod
     def _get_field_enum_info(cls):
         field_enum_info = {}
-        field_enum_info['InstallType'] = User.InstallType.__dict__.values()
         return field_enum_info

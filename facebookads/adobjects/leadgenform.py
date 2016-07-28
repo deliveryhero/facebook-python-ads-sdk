@@ -42,6 +42,7 @@ class LeadgenForm(
 
     class Field(AbstractObject.Field):
         created_time = 'created_time'
+        creator = 'creator'
         cusomized_tcpa_content = 'cusomized_tcpa_content'
         expired_leads_count = 'expired_leads_count'
         follow_up_action_text = 'follow_up_action_text'
@@ -56,14 +57,41 @@ class LeadgenForm(
         page_id = 'page_id'
         privacy_policy_url = 'privacy_policy_url'
         qualifiers = 'qualifiers'
+        status = 'status'
         tcpa_compliance = 'tcpa_compliance'
 
     @classmethod
     def get_endpoint(cls):
         return 'leadgen_forms'
 
+    def api_delete(self, fields=None, params=None, batch=None, pending=False):
+        param_types = {
+        }
+        enums = {
+        }
+        request = FacebookRequest(
+            node_id=self['id'],
+            method='DELETE',
+            endpoint='/',
+            api=self._api,
+            param_checker=TypeChecker(param_types, enums),
+            target_class=AbstractCrudObject,
+            api_type='NODE',
+            response_parser=ObjectParser(reuse_object=self),
+        )
+        request.add_params(params)
+        request.add_fields(fields)
+
+        if batch is not None:
+            request.add_to_batch(batch)
+            return request
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
+
     def api_get(self, fields=None, params=None, batch=None, pending=False):
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -84,12 +112,14 @@ class LeadgenForm(
         if batch is not None:
             request.add_to_batch(batch)
             return request
-
-        return request if pending else request.execute()
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     def get_leads(self, fields=None, params=None, batch=None, pending=False):
         from facebookads.adobjects.lead import Lead
-        self.assure_call()
         param_types = {
         }
         enums = {
@@ -110,11 +140,44 @@ class LeadgenForm(
         if batch is not None:
             request.add_to_batch(batch)
             return request
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
-        return request if pending else request.execute()
+    def create_test_lead(self, fields=None, params=None, batch=None, pending=False):
+        param_types = {
+            'custom_disclaimer_responses': 'list<Object>',
+            'field_data': 'list<Object>',
+        }
+        enums = {
+        }
+        request = FacebookRequest(
+            node_id=self['id'],
+            method='POST',
+            endpoint='/test_leads',
+            api=self._api,
+            param_checker=TypeChecker(param_types, enums),
+            target_class=LeadgenForm,
+            api_type='EDGE',
+            response_parser=ObjectParser(target_class=LeadgenForm),
+        )
+        request.add_params(params)
+        request.add_fields(fields)
+
+        if batch is not None:
+            request.add_to_batch(batch)
+            return request
+        elif pending:
+            return request
+        else:
+            self.assure_call()
+            return request.execute()
 
     _field_types = {
         'created_time': 'datetime',
+        'creator': 'User',
         'cusomized_tcpa_content': 'string',
         'expired_leads_count': 'unsigned int',
         'follow_up_action_text': 'string',
@@ -128,7 +191,8 @@ class LeadgenForm(
         'page': 'Object',
         'page_id': 'string',
         'privacy_policy_url': 'string',
-        'qualifiers': 'list<Object>',
+        'qualifiers': 'list<LeadGenQualifier>',
+        'status': 'string',
         'tcpa_compliance': 'bool',
     }
 
